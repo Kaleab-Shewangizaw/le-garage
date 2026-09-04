@@ -1,0 +1,65 @@
+name: le-garage
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: legarage
+      POSTGRES_PASSWORD: legarage
+      POSTGRES_DB: legarage
+    ports:
+      # Host port 5442 to avoid clashing with other Postgres instances
+      # (native or other projects' containers) already using 5432-5434 on
+      # a dev machine (docs/DEVELOPMENT.md) — the api container talks to
+      # this over the internal Docker network on the standard 5432 regardless.
+      - "5442:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legarage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      # Remapped like postgres above — see that comment.
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: legarage
+      MINIO_ROOT_PASSWORD: legarage123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    restart: unless-stopped
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      DATABASE_URL: postgresql://legarage:legarage@postgres:5432/legarage?schema=public
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

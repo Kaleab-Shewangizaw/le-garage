@@ -1,0 +1,640 @@
+// Le Garage — primary database schema.
+// Source of truth for physical schema; conceptual explanation lives in
+// /docs/DATABASE.md and /docs/DOMAIN.md. Keep them in sync when this changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  OWNER
+  MANAGER
+  FRONT_DESK
+  TECHNICIAN
+  PLATFORM_ADMIN
+}
+
+enum Currency {
+  ETB
+}
+
+enum JobStatus {
+  INTAKE
+  DIAGNOSING
+  WAITING_APPROVAL
+  APPROVED
+  WAITING_PARTS
+  IN_PROGRESS
+  QUALITY_CHECK
+  READY
+  COLLECTED
+  ON_HOLD
+  CANCELLED
+  CLOSED
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  SUPERSEDED
+  APPROVED
+  REJECTED
+}
+
+enum EstimateItemType {
+  PART
+  LABOR
+}
+
+enum ApprovalMethod {
+  IN_APP
+  VERBAL_LOGGED_BY_STAFF
+  PHONE
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum PartCondition {
+  NEW
+  USED
+  REFURBISHED
+}
+
+enum PartSource {
+  GARAGE_SUPPLIED
+  CUSTOMER_SUPPLIED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  TELEBIRR
+  BANK_TRANSFER
+  OTHER
+}
+
+enum AttachmentEntityType {
+  JOB
+  DIAGNOSIS
+  ESTIMATE
+  VEHICLE
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  TELEGRAM
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Identity & tenancy
+// ─────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String?  @unique
+  phone        String?  @unique
+  passwordHash String
+  fullName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  staffMemberships StaffMember[]
+  refreshTokens    RefreshToken[]
+  auditLogEntries  AuditLog[]        @relation("AuditLogActor")
+
+  @@index([email])
+  @@index([phone])
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  garage    Garage?
+  customers Customer[]
+  vehicles  Vehicle[]
+  jobs      Job[]
+  staff     StaffMember[]
+  auditLogs AuditLog[]
+}
+
+model Garage {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  phone       String?
+  address     String?
+  city        String   @default("Addis Ababa")
+  businessHours Json?
+  verifiedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff     StaffMember[]
+  jobs      Job[]
+}
+
+model StaffMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  garageId       String
+  garage         Garage       @relation(fields: [garageId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role      Role
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignedJobs Job[] @relation("AssignedTechnician")
+
+  @@unique([garageId, userId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Customers & Vehicles
+// ─────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  fullName String
+  phone    String
+  email    String?
+  notes    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  jobs           Job[]
+  ownedVehicles  VehicleOwnerHistory[]
+  approvals      Approval[]            @relation("ApprovalDecidedByCustomer")
+
+  @@index([organizationId, phone])
+  @@index([organizationId, fullName])
+}
+
+model Vehicle {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  vin          String?
+  licensePlate String
+  make         String
+  model        String
+  year         Int?
+  color        String?
+  lastKnownMileage Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  ownerHistory VehicleOwnerHistory[]
+  jobs         Job[]
+  attachments  Attachment[]
+  serviceRecords ServiceRecord[]
+
+  @@unique([vin])
+  @@index([organizationId, licensePlate])
+  @@index([organizationId])
+}
+
+model VehicleOwnerHistory {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  @@index([vehicleId])
+  @@index([customerId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Job Card — the spine
+// ─────────────────────────────────────────────────────────────────────────
+
+model Job {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  garageId       String
+  garage         Garage       @relation(fields: [garageId], references: [id], onDelete: Cascade)
+  vehicleId      String
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  assignedTechnicianId String?
+  assignedTechnician   StaffMember? @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
+
+  status          JobStatus @default(INTAKE)
+  complaint       String
+  mileageAtIntake Int?
+
+  intakeAt        DateTime  @default(now())
+  diagnosingAt    DateTime?
+  waitingApprovalAt DateTime?
+  approvedAt      DateTime?
+  inProgressAt    DateTime?
+  qualityCheckAt  DateTime?
+  readyAt         DateTime?
+  collectedAt     DateTime?
+  cancelledAt     DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  statusEvents JobStatusEvent[]
+  diagnoses    Diagnosis[]
+  estimates    Estimate[]
+  approvals    Approval[]
+  parts        JobPart[]
+  labor        JobLabor[]
+  invoice      Invoice?
+  attachments  Attachment[]
+  serviceRecord ServiceRecord?
+
+  @@index([organizationId, status])
+  @@index([organizationId, vehicleId])
+  @@index([organizationId, customerId])
+}
+
+model JobStatusEvent {
+  id     String @id @default(uuid())
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  fromStatus   JobStatus?
+  toStatus     JobStatus
+  actorUserId  String?
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model Diagnosis {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  authorStaffId    String
+  observedProblem  String
+  suspectedCause   String?
+  confirmedCause   String?
+  severity         String?
+  recommendedRepair String?
+  notes            String?
+
+  createdAt DateTime @default(now())
+
+  attachments Attachment[]
+
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Estimates (versioned) & Approvals
+// ─────────────────────────────────────────────────────────────────────────
+
+model Estimate {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  version   Int
+  status    EstimateStatus @default(DRAFT)
+  currency  Currency       @default(ETB)
+
+  subtotal Int @default(0)
+  taxTotal Int @default(0)
+  discountTotal Int @default(0)
+  total    Int @default(0)
+
+  createdByStaffId String
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  decidedAt DateTime?
+
+  supersedesEstimateId String?
+
+  items     EstimateItem[]
+  approvals Approval[]
+  attachments Attachment[]
+
+  @@unique([jobId, version])
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+model EstimateItem {
+  id         String   @id @default(uuid())
+  estimateId String
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  type        EstimateItemType
+  description String
+  quantity    Int              @default(1)
+  unitPrice   Int
+  discount    Int              @default(0)
+  lineTotal   Int
+
+  createdAt DateTime @default(now())
+
+  approvalDecisions ApprovalItemDecision[]
+
+  @@index([estimateId])
+}
+
+model Approval {
+  id             String   @id @default(uuid())
+  organizationId String
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  estimateId String
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  method                 ApprovalMethod
+  decidedByCustomerId    String?
+  decidedByCustomer      Customer? @relation("ApprovalDecidedByCustomer", fields: [decidedByCustomerId], references: [id])
+  loggedByStaffId        String?
+  note                   String?
+
+  createdAt DateTime @default(now())
+
+  itemDecisions ApprovalItemDecision[]
+
+  @@index([jobId])
+  @@index([estimateId])
+  @@index([organizationId])
+}
+
+model ApprovalItemDecision {
+  id             String   @id @default(uuid())
+  approvalId     String
+  approval       Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  estimateItemId String
+  estimateItem   EstimateItem @relation(fields: [estimateItemId], references: [id], onDelete: Cascade)
+
+  decision ApprovalDecision
+
+  @@unique([approvalId, estimateItemId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Parts & Labor (job-scoped, MVP — see DOMAIN.md §3)
+// ─────────────────────────────────────────────────────────────────────────
+
+model JobPart {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  name       String
+  partNumber String?
+  brand      String?
+  condition  PartCondition @default(NEW)
+  source     PartSource    @default(GARAGE_SUPPLIED)
+  supplier   String?
+  quantity   Int           @default(1)
+  unitCost   Int?
+  unitPrice  Int
+  warrantyMonths Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+model JobLabor {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  description String
+  technicianStaffId String?
+  hours       Float?
+  rate        Int?
+  amount      Int
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Invoicing & Payments
+// ─────────────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  status   InvoiceStatus @default(DRAFT)
+  currency Currency      @default(ETB)
+
+  subtotal Int @default(0)
+  taxTotal Int @default(0)
+  discountTotal Int @default(0)
+  total    Int @default(0)
+
+  supersedesInvoiceId String?
+  issuedAt DateTime?
+  voidedAt DateTime?
+
+  createdByStaffId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Int    @default(1)
+  unitPrice   Int
+  discount    Int    @default(0)
+  lineTotal   Int
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id             String  @id @default(uuid())
+  organizationId String
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  amount   Int
+  method   PaymentMethod
+  reference String?
+  paidAt   DateTime @default(now())
+  voidedAt DateTime?
+
+  recordedByStaffId String
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Attachments, Service History, Audit, Notifications
+// ─────────────────────────────────────────────────────────────────────────
+
+model Attachment {
+  id             String   @id @default(uuid())
+  organizationId String
+
+  entityType AttachmentEntityType
+  jobId        String?
+  job          Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  diagnosisId  String?
+  diagnosis    Diagnosis? @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+  estimateId   String?
+  estimate     Estimate?  @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  vehicleId    String?
+  vehicle      Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  objectKey String
+  mimeType  String
+  sizeBytes Int
+  uploadedByStaffId String
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([jobId])
+}
+
+model ServiceRecord {
+  id        String  @id @default(uuid())
+  jobId     String  @unique
+  job       Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  garageId       String
+
+  serviceDate DateTime
+  mileage     Int?
+  summary     Json
+
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  entityType String
+  entityId   String
+  action     String
+  actorUserId String?
+  actorUser   User?  @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  beforeState Json?
+  afterState  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+
+  channel NotificationChannel
+  type    String
+  payload Json
+  status  NotificationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+
+  @@index([userId])
+}

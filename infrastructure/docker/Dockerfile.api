@@ -1,0 +1,27 @@
+# Builds and runs apps/api from the monorepo root context.
+# docker compose -f infrastructure/docker/docker-compose.yml build api
+
+FROM node:22-alpine AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS deps
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/database/package.json packages/database/
+COPY packages/types/package.json packages/types/
+COPY packages/validation/package.json packages/validation/
+COPY packages/config/package.json packages/config/
+COPY apps/api/package.json apps/api/
+RUN pnpm install --frozen-lockfile=false
+
+FROM deps AS build
+COPY . .
+RUN pnpm --filter @le-garage/database generate
+RUN pnpm --filter @le-garage/api build
+
+FROM base AS runner
+ENV NODE_ENV=production
+COPY --from=build /repo /repo
+WORKDIR /repo/apps/api
+EXPOSE 4000
+CMD ["node", "dist/main.js"]
