@@ -14,6 +14,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "Vehicle",
   "Job",
   "Diagnosis",
+  "JobNote",
   "Estimate",
   "Approval",
   "JobPart",

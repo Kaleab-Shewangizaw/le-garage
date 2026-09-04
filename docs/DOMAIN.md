@@ -18,16 +18,17 @@ Organization (tenant)
      └─ Job  ← THE SPINE
           ├─ JobStatusEvent (state machine audit trail)
           ├─ Diagnosis (0..n, append-only findings)
-          ├─ Estimate (0..n, versioned)
+          ├─ JobNote (0..n, append-only freeform technician/staff notes)
+          ├─ Estimate (0..n, versioned — the quoted/proposed scope)
           │    └─ EstimateItem (0..n, part/labor lines)
           ├─ Approval (records what was approved/rejected, per estimate version)
-          ├─ JobPart (parts consumed on this job)
-          ├─ JobLabor (labor performed on this job)
-          ├─ Invoice (1, generated from approved scope)
+          ├─ JobPart (0..n, parts actually consumed on this job)
+          ├─ JobLabor (0..n, labor actually performed on this job)
+          ├─ Invoice (0..n, versioned — generated from actual JobPart/JobLabor, not from EstimateItems)
           │    └─ InvoiceItem
           ├─ Payment (0..n, against an Invoice)
           ├─ Attachment (photos/videos/docs, attached to Job/Diagnosis/etc.)
-          └─ ServiceRecord (1, written on completion — durable owner-facing history)
+          └─ ServiceRecord (1, written on COLLECTED — durable owner-facing history)
 
 User (platform identity) ──< StaffMember (garage staff)
 User ──< OwnerProfile (vehicle owner) [Phase 10]
@@ -117,6 +118,16 @@ manually by staff with a required note, since not all customers will be on
 the app at launch). Approval is scoped to specific `EstimateItem`s so
 "approve selected items" is a first-class case, not a workaround.
 
+### JobNote
+Freeform, append-only technician/staff log entries on a `Job` — the
+"technician notes" concept from the workflow brief, distinct from
+`Diagnosis` (structured problem/cause/severity findings, used for both the
+initial diagnosis and "additional findings" discovered mid-repair) and
+`JobLabor` (billable work performed). A quick update like "waiting on
+customer callback" or "test drove, no more noise" doesn't fit either of
+those, so it gets its own lightweight home rather than overloading
+`Diagnosis`'s more formal shape.
+
 ### Part (JobPart in MVP)
 In MVP, parts are recorded **in relation to a job**, not as a standalone
 inventory system (per `PRODUCT.md` §8 / brief §14). Fields: name, part
@@ -124,25 +135,46 @@ number, brand, condition (new/used/refurbished), supplier, quantity, unit
 cost, unit selling price, warranty period, and whether customer-supplied or
 garage-supplied. A standalone `Inventory` entity is explicitly deferred
 (`ROADMAP.md` Phase 2+) — the schema does not block adding it (a future
-`InventoryItem` can be referenced optionally from `JobPart`).
+`InventoryItem` can be referenced optionally from `JobPart`). Any staff
+member can add a part (a technician logging what they installed is core to
+the workflow); changing or removing one requires a front-office role
+(`OWNER`/`MANAGER`/`FRONT_DESK`), since parts feed directly into invoicing.
+Locked once the job has an `ISSUED` invoice — see Invoice below.
 
 ### Labor (JobLabor in MVP)
-Work performed: description, technician, hours/time, rate, and computed
-amount. Kept as job-scoped line items, not a separate timesheet system.
+Work performed: description, technician, hours/time, rate, and an explicit
+billable `amount` (never silently derived from `hours * rate` — the amount
+is always what's actually charged). Kept as job-scoped line items, not a
+separate timesheet/payroll system. Same create/edit role split and
+invoice-lock as `JobPart`.
 
 ### Invoice / InvoiceItem
-Generated from the **approved** estimate scope plus actual parts/labor
-consumed. Immutable once issued in the accounting sense — corrections are
-modeled as a credit/adjustment, not an edit, once payments exist against it
-(MVP simplification: invoices can be edited only while `DRAFT`; once
-`ISSUED`, further changes require a new invoice version — see
-`DATABASE.md`).
+**Generated from the job's actual recorded `JobPart`/`JobLabor` entries —
+not from the `Estimate`.** The estimate was the quote; parts/labor are what
+actually happened during the repair, and that's what gets billed. MVP does
+not cross-validate `JobPart`/`JobLabor` against the approved
+`EstimateItem`s (no product-matching heuristics) — the platform trusts the
+garage to only record work within the approved scope; see
+`OPEN_QUESTIONS.md`.
+
+Versioned like `Estimate` (§6): a `DRAFT` invoice is mutable in place
+(regenerated whenever parts/labor change), but once `ISSUED` it is frozen —
+a correction **voids** it and generates a new version, linked via
+`supersedesInvoiceId`. Parts and labor are locked (no create/update/delete)
+while an `ISSUED` invoice is active for the job, so the invoice can never
+silently drift out of sync with what it was built from; voiding the
+invoice is the explicit, audited unlock. An `ISSUED` invoice with
+non-voided payments against it cannot be voided — void the payments first.
 
 ### Payment
 Amount, method (`CASH`, `TELEBIRR`, `BANK_TRANSFER`, `OTHER`), date,
-reference, against an `Invoice`. Multiple partial payments allowed.
-Outstanding balance is derived (`invoice.total - sum(payments)`), never
-stored redundantly as a mutable field.
+reference, against an `Invoice`. Multiple partial payments allowed; a
+payment that would exceed the current outstanding balance is rejected
+outright rather than allowed to create a negative balance. Outstanding
+balance is derived (`invoice.total - sum(non-voided payments)`), never
+stored redundantly as a mutable field. A payment can be voided (a data-
+entry correction) but never deleted — `voidedAt` is set, the row stays as
+history.
 
 ### Attachment
 Photo/video/document, polymorphically attached to a `Job`, `Diagnosis`,
@@ -150,11 +182,17 @@ Photo/video/document, polymorphically attached to a `Job`, `Diagnosis`,
 holds metadata + URL/key only. See `SECURITY.md` §File Uploads.
 
 ### ServiceRecord
-Written once a `Job` reaches `COLLECTED`. A durable, owner-facing summary
-(date, mileage, garage, diagnosis summary, work performed, parts, labor,
-cost, photos, warranty, payment status) that survives even if the
-originating `Job` row is later archived. This is the seed of the future
-**Digital Vehicle Passport** (`ROADMAP.md`).
+Written automatically, in the same transaction as the `COLLECTED`
+transition — not a separate staff action. Immediately after, the job is
+moved straight to the terminal `CLOSED` state (see §5) — "the customer
+picked up the vehicle" and "this job's history is now permanently
+recorded" are one atomic event, so a job can never end up `COLLECTED`
+without a service record, and never has a service record without actually
+having been collected. A durable, owner-facing summary (JSON: complaint,
+diagnoses, notes, parts/labor performed, the approved estimate, the issued
+invoice's total/balance, warranty) that survives even if the originating
+`Job` row is later archived. This is the seed of the future **Digital
+Vehicle Passport** (`ROADMAP.md`).
 
 ### AuditLog
 Cross-cutting: `entityType`, `entityId`, `action`, `actorUserId`,

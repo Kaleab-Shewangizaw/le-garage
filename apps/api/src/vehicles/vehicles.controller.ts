@@ -29,6 +29,11 @@ export class VehiclesController {
     return this.vehiclesService.jobHistory(user.organizationId, id);
   }
 
+  @Get(":id/service-history")
+  async serviceHistory(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
+    return this.vehiclesService.serviceHistory(user.organizationId, id);
+  }
+
   @Post()
   async create(
     @CurrentUser() user: AccessTokenPayload,

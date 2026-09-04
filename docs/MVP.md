@@ -72,14 +72,22 @@ beyond recording, social/rating features, offline-everything mobile.
 
 ## 4. Implementation order
 
-Matches `ROADMAP.md` phases. First vertical slice (this initial
-implementation pass): **Phase 0 (repo/docs/architecture) → Phase 1 (auth +
-organizations + garage setup) → Phase 2 (customers + vehicles) → Phase 3
-(job cards + intake) → Phase 4 (diagnosis) → Phase 5 (estimates +
-approvals).** Parts/labor/invoices/payments/service-history follow
-immediately after as Phase 6–9 in the same architectural pattern already
-established; the schema for all of them is designed now (`DATABASE.md`) so
-later phases are additive, not restructuring.
+Matches `ROADMAP.md` phases. Backend Phases 0–9 are complete: repo/docs/
+architecture → auth + organizations + garage setup → customers + vehicles
+→ job cards + intake → diagnosis → estimates + approvals → technicians +
+job execution → parts + labor → invoices + payments → service history. The
+full garage-side loop in §1 above (intake through service history) works
+end-to-end against a real database, covered by `apps/api/test/
+job-lifecycle.e2e-spec.ts` and `job-execution.e2e-spec.ts`.
+
+`apps/garage-web` now covers the full garage-side loop in §1 above
+end-to-end in the browser — login → overview → new job (intake) →
+diagnosis → estimate → send → approval → technician assignment → parts/
+labor → invoice → payment → collect → vehicle service history — verified
+against the real API, not mocked data. See `ROADMAP.md` §"Garage Web
+status" for exactly what's built. Next: Phase 10 (owner app), or hardening
+the garage-web surface (file uploads, realtime board updates) — see
+`OPEN_QUESTIONS.md` for the tradeoffs on each.
 
 ## 5. Assumptions made to keep the MVP unblocked
 

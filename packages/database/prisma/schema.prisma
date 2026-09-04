@@ -306,11 +306,12 @@ model Job {
 
   statusEvents JobStatusEvent[]
   diagnoses    Diagnosis[]
+  notes        JobNote[]
   estimates    Estimate[]
   approvals    Approval[]
   parts        JobPart[]
   labor        JobLabor[]
-  invoice      Invoice?
+  invoices     Invoice[]
   attachments  Attachment[]
   serviceRecord ServiceRecord?
 
@@ -350,6 +351,26 @@ model Diagnosis {
   createdAt DateTime @default(now())
 
   attachments Attachment[]
+
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+/// Freeform technician/staff log entries on a job — distinct from Diagnosis
+/// (structured problem/cause/severity findings) and JobLabor (billable
+/// work performed): a quick note like "waiting on customer callback" or
+/// "test drove, no more noise" doesn't fit either. Append-only, like
+/// Diagnosis (docs/DOMAIN.md §3).
+model JobNote {
+  id             String @id @default(uuid())
+  organizationId String
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  authorStaffId String
+  note          String
+
+  createdAt DateTime @default(now())
 
   @@index([jobId])
   @@index([organizationId])
@@ -493,12 +514,17 @@ model JobLabor {
 // Invoicing & Payments
 // ─────────────────────────────────────────────────────────────────────────
 
+/// Versioned like Estimate (docs/DOMAIN.md §6, docs/DATABASE.md §8): a
+/// DRAFT invoice is mutable in place (regenerated as parts/labor change),
+/// but once ISSUED it is frozen — a correction VOIDs it and a new version
+/// is generated, linked via supersedesInvoiceId. Never edited after issue.
 model Invoice {
   id             String @id @default(uuid())
   organizationId String
-  jobId String @unique
+  jobId String
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
+  version  Int
   status   InvoiceStatus @default(DRAFT)
   currency Currency      @default(ETB)
 
@@ -518,6 +544,7 @@ model Invoice {
   items    InvoiceItem[]
   payments Payment[]
 
+  @@unique([jobId, version])
   @@index([jobId])
   @@index([organizationId])
 }

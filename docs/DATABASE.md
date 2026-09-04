@@ -114,6 +114,22 @@ is the source of truth for history. Transitions are validated in the
 Index: `@@index([organizationId, status])` — this is the query the garage
 dashboard runs constantly ("show me all jobs in X status").
 
+`JobNote` is a second, separate append-only child of `Job` — freeform
+technician/staff notes (`DOMAIN.md` §3), distinct from `JobStatusEvent`
+(system-generated transition history) and `Diagnosis` (structured
+findings). Unlike `JobStatusEvent`, it carries `organizationId` directly
+(it's listed in the tenant-scope guard's model set,
+`packages/database/src/tenant-scope.ts`) since it's queried on its own
+merits, not only ever reached via an already-scoped `Job`.
+
+Reaching `COLLECTED` (`transitionStatus` in `apps/api/src/jobs/
+jobs.service.ts`) runs inside one database transaction that also gathers
+diagnoses/notes/parts/labor/the approved estimate/the issued invoice,
+writes the `ServiceRecord`, and immediately transitions the job again to
+`CLOSED` with its own `JobStatusEvent` — all four things (status write,
+`ServiceRecord`, second status write, its event) commit atomically or not
+at all.
+
 ## 6. Estimate versioning
 
 ```
@@ -156,16 +172,43 @@ approximated with a free-text note.
 
 ## 8. Invoices & payments
 
-`Invoice` is generated from the job's currently-authorized scope (`DOMAIN.md`
-§6) plus actual recorded parts/labor. `InvoiceStatus`: `DRAFT`, `ISSUED`,
-`VOID`. Editable only while `DRAFT`; `ISSUED` is immutable (corrections are
-a new invoice, with the old one `VOID`ed and linked via
-`supersedesInvoiceId`).
+```
+Invoice
+  id, organizationId, jobId  (NOT unique — versioned, like Estimate)
+  version        Int
+  status         InvoiceStatus  DRAFT | ISSUED | VOID
+  subtotal/discountTotal/taxTotal/total  -- Int minor units
+  supersedesInvoiceId  String?
+  issuedAt, voidedAt   DateTime?
+
+InvoiceItem
+  id, invoiceId
+  description, quantity, unitPrice (Int), discount (Int), lineTotal (Int)
+```
+
+`Invoice` is generated from the job's **actual recorded `JobPart`/
+`JobLabor` rows** (`DOMAIN.md` §3) — not from `Estimate`/`EstimateItem`
+directly. `@@unique([jobId, version])`, same pattern as `Estimate`
+(`DATABASE.md` §6): a `DRAFT` invoice is mutated in place as parts/labor
+change (its `InvoiceItem`s are deleted and recreated on each regeneration);
+once `ISSUED` it is immutable. A correction voids the `ISSUED` invoice
+(`status -> VOID`, `voidedAt` set) and a new `DRAFT` is generated as
+`version + 1`, linked back via `supersedesInvoiceId`. Voiding is refused if
+the invoice has any non-voided `Payment`s — void those first, so "this
+invoice's money history changed" is never silent.
+
+While a job has an `ISSUED` invoice, its `JobPart`/`JobLabor` rows are
+locked (no create/update/delete) — enforced in `apps/api/src/common/
+job-financial-lock.ts` — so the invoice can't silently drift from what it
+was generated from.
 
 `Payment`: `invoiceId`, `organizationId`, `amount` (Int), `method`
 (`PaymentMethod` enum: `CASH`, `TELEBIRR`, `BANK_TRANSFER`, `OTHER`),
-`reference?`, `paidAt`, `recordedByStaffId`. Balance = `invoice.total -
-SUM(payments.amount WHERE NOT voided)`. Never stored as a mutable column.
+`reference?`, `paidAt`, `recordedByStaffId`, `voidedAt?`. Balance =
+`invoice.total - SUM(payments.amount WHERE NOT voided)`. Never stored as a
+mutable column. A payment that would push the balance negative is rejected
+at the service layer (`apps/api/src/payments/payments.service.ts`), not
+just documented as a convention.
 
 ## 9. Indexing strategy (MVP, based on actual expected queries)
 

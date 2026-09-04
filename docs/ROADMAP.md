@@ -8,23 +8,44 @@ end-to-end.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Repository, architecture, documentation | **In progress** |
-| 1 | Auth + organizations + garage setup | **In progress** |
-| 2 | Customers + vehicles | **In progress** |
-| 3 | Job cards + intake | **In progress** |
-| 4 | Diagnosis | **In progress** |
-| 5 | Estimates + approvals | **In progress** |
-| 6 | Technicians + job execution | Not started |
-| 7 | Parts + labor | Not started |
-| 8 | Invoices + payments | Not started |
-| 9 | Service history | Not started |
+| 0 | Repository, architecture, documentation | **Done** |
+| 1 | Auth + organizations + garage setup | **Done** |
+| 2 | Customers + vehicles | **Done** |
+| 3 | Job cards + intake | **Done** |
+| 4 | Diagnosis | **Done** |
+| 5 | Estimates + approvals | **Done** |
+| 6 | Technicians + job execution | **Done** — assignment, technician job list (`?mine=true`), append-only JobNote |
+| 7 | Parts + labor | **Done** — job-scoped, locked once invoiced |
+| 8 | Invoices + payments | **Done** — versioned invoices generated from actual parts/labor, payments with balance tracking |
+| 9 | Service history | **Done** — auto-written on COLLECTED, job auto-closes |
 | 10 | Owner app | Not started |
 | 11 | Notifications | Not started |
 | 12 | Hardening + testing + deployment | Not started |
+| — | Garage Web (`apps/garage-web`) | **Core loop done** — see below |
 
 See `DEVELOPMENT.md` for how to run what currently exists, and each
 milestone's implementation notes (communicated in-conversation at the time
 of the change, and reflected here as phases complete).
+
+### Garage Web status
+
+Built and verified end-to-end in a real browser (not just typechecked):
+auth (login/register), app shell (sidebar/topbar/mobile nav), Overview
+(operational stat tiles + jobs-needing-attention list), Jobs board
+(search/status tabs), the intake flow (`New job` — find-or-create
+customer/vehicle in one panel), and the full Job Detail page (header with
+the job-timeline signature element + status actions, Overview/Estimate/
+Parts & Labor/Invoice & Payment/Activity tabs) covering diagnosis,
+estimate creation → send → approval, technician assignment, parts/labor
+recording, invoice generation/issue/void, and payment recording. Customers,
+Vehicles (including service history), Team, and Settings pages are built
+and connected to real data, lighter than Jobs/Job Detail by design (brief
+§29 — prioritize workflows over exhaustive settings surface).
+
+Not yet built: photo/attachment upload (blocked on the `files` module,
+itself not yet implemented — see `API.md` §`files`), realtime board
+updates (Socket.IO, deferred per `ARCHITECTURE.md` §4 until polling proves
+insufficient), and a dedicated admin web app.
 
 ## Post-MVP roadmap (Phase 2+ concepts — not built now)
 

@@ -78,18 +78,25 @@ GET    /api/v1/vehicles/:id/jobs       job history for this vehicle
 
 ### `jobs` (job card)
 ```
-POST   /api/v1/jobs                    create (intake) — customer+vehicle+complaint+mileage
-GET    /api/v1/jobs?status=&search=    dashboard/board query
-GET    /api/v1/jobs/:id                full job card (diagnosis/estimate/approval summary embedded)
-PATCH  /api/v1/jobs/:id/status         state-machine-validated transition
-PATCH  /api/v1/jobs/:id/assign         assign technician
-GET    /api/v1/jobs/:id/events         JobStatusEvent history
+POST   /api/v1/jobs                              create (intake) — customer+vehicle+complaint+mileage
+GET    /api/v1/jobs?status=&search=&mine=true     dashboard/board query; mine=true = caller's own assigned jobs
+                    &assignedTechnicianId=
+GET    /api/v1/jobs/:id                           full job card (diagnoses/notes/estimates/approvals/parts/labor/invoices embedded)
+PATCH  /api/v1/jobs/:id/status                    state-machine-validated transition (COLLECTED auto-cascades to CLOSED + ServiceRecord)
+PATCH  /api/v1/jobs/:id/assign                    assign technician  [OWNER, MANAGER, FRONT_DESK]
+GET    /api/v1/jobs/:id/events                    JobStatusEvent history
 ```
 
 ### `diagnoses`
 ```
-POST   /api/v1/jobs/:jobId/diagnoses   add diagnosis entry           [TECHNICIAN, MANAGER, OWNER]
+POST   /api/v1/jobs/:jobId/diagnoses   add diagnosis entry (append-only)
 GET    /api/v1/jobs/:jobId/diagnoses
+```
+
+### `notes` — freeform technician/staff log entries (docs/DOMAIN.md §3)
+```
+POST   /api/v1/jobs/:jobId/notes       add note (append-only)
+GET    /api/v1/jobs/:jobId/notes
 ```
 
 ### `estimates`
@@ -106,24 +113,61 @@ POST   /api/v1/estimates/:estimateId/approvals   record decision (per-item)
 GET    /api/v1/jobs/:jobId/approvals
 ```
 
+### `parts` — job-scoped, feeds invoicing (docs/DOMAIN.md §3)
+```
+POST   /api/v1/jobs/:jobId/parts               add part (any staff)
+GET    /api/v1/jobs/:jobId/parts
+PATCH  /api/v1/jobs/:jobId/parts/:partId       [OWNER, MANAGER, FRONT_DESK]
+DELETE /api/v1/jobs/:jobId/parts/:partId       [OWNER, MANAGER, FRONT_DESK]
+```
+All four are refused with `409 JOB_ALREADY_INVOICED` once the job has an
+`ISSUED` invoice.
+
+### `labor` — same shape and lock as `parts`
+```
+POST   /api/v1/jobs/:jobId/labor               add labor entry (any staff)
+GET    /api/v1/jobs/:jobId/labor
+PATCH  /api/v1/jobs/:jobId/labor/:laborId      [OWNER, MANAGER, FRONT_DESK]
+DELETE /api/v1/jobs/:jobId/labor/:laborId      [OWNER, MANAGER, FRONT_DESK]
+```
+
+### `invoices` — generated from actual parts/labor, versioned like estimates
+```
+POST   /api/v1/jobs/:jobId/invoices                    generate/regenerate DRAFT   [OWNER, MANAGER, FRONT_DESK]
+POST   /api/v1/jobs/:jobId/invoices/:id/issue           DRAFT → ISSUED (freezes it) [OWNER, MANAGER, FRONT_DESK]
+POST   /api/v1/jobs/:jobId/invoices/:id/void            ISSUED → VOID, refused if it has payments [OWNER, MANAGER]
+GET    /api/v1/jobs/:jobId/invoices                     all versions
+GET    /api/v1/jobs/:jobId/invoices/latest              includes computed amountPaid/balance
+```
+
+### `payments` — recorded, not processed (docs/ETHIOPIA.md §2)
+```
+POST   /api/v1/invoices/:invoiceId/payments             record (amount, method, reference)  [OWNER, MANAGER, FRONT_DESK]
+GET    /api/v1/invoices/:invoiceId/payments
+GET    /api/v1/invoices/:invoiceId/payments/balance      { total, amountPaid, balance }
+POST   /api/v1/invoices/:invoiceId/payments/:id/void     [OWNER, MANAGER]
+```
+`record` requires the invoice to be `ISSUED` and rejects an amount that
+would exceed the outstanding balance (`400 PAYMENT_EXCEEDS_BALANCE`).
+
+### `service-history` — durable, owner-facing (docs/DOMAIN.md §3/§8)
+```
+GET    /api/v1/vehicles/:id/service-history    ServiceRecord[], newest first
+```
+Written automatically when a job reaches `COLLECTED` — there is no create
+route; it is not a user-facing write.
+
 ### `files`
 ```
 POST   /api/v1/files/presign           issue a scoped, short-lived upload URL
 POST   /api/v1/files                   register uploaded object as an Attachment (entityType/entityId)
 GET    /api/v1/files/:id/url           signed read URL
 ```
+Not yet implemented (schema exists via `Attachment` — see `ROADMAP.md`).
 
 ### `dashboard`
 ```
 GET    /api/v1/dashboard/summary       counts by status, outstanding balance, today's activity
-```
-
-### Phase 6–9 (schema exists, routes land with those phases)
-```
-parts, labor       nested under /jobs/:jobId/parts, /jobs/:jobId/labor
-invoices           /jobs/:jobId/invoice, POST issue, GET
-payments           /invoices/:invoiceId/payments
-service-history    /vehicles/:id/service-history
 ```
 
 ### Admin (`PLATFORM_ADMIN` only, cross-tenant)

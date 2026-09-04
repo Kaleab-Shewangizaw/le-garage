@@ -21,7 +21,7 @@ architectural decisions.
 ```
 apps/
   api/            NestJS modular monolith — the backend
-  garage-web/     Next.js — garage staff web app (not yet built)
+  garage-web/     Next.js — garage staff web app (core loop built)
   owner-mobile/   React Native/Expo — vehicle owner app (Phase 10)
   admin-web/      Next.js — internal platform admin (not yet built)
 packages/
@@ -47,12 +47,18 @@ pnpm db:generate && pnpm db:migrate && pnpm db:seed
 pnpm --filter @le-garage/api dev
 ```
 
-Then `curl http://localhost:4000/api/v1/health`.
+Then `curl http://localhost:4000/api/v1/health`, or run `apps/garage-web`
+too (see [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) §"Running Garage
+Web") and sign in at `http://localhost:3000/login`.
 
 ## Current status
 
-Phase 0 (repo, architecture, docs) and the first vertical slice — garage
-auth, organization/garage setup, customers, vehicles, job cards/intake,
-diagnosis, and estimates/approvals — are implemented and tested end-to-end
-against a real Postgres instance. See
-[`docs/ROADMAP.md`](./docs/ROADMAP.md) for what's next.
+The full garage-side backend (Phases 0–9: auth, organizations/garages,
+customers, vehicles, job cards/intake, diagnosis, estimates/approvals,
+technician execution, parts/labor, invoices/payments, service history) is
+implemented and tested end-to-end against a real Postgres instance.
+`apps/garage-web` covers the same loop end-to-end in the browser — login,
+intake, diagnosis, estimate, approval, repair, invoice, payment,
+collection, and the resulting vehicle service history. See
+[`docs/ROADMAP.md`](./docs/ROADMAP.md) for exactly what's built and what's
+next (owner app, notifications, hardening).

@@ -25,12 +25,13 @@ export class JobsService {
   ) {}
 
   /** Dashboard/board query (docs/API.md, docs/PRODUCT.md §"Garage Dashboard"). */
-  async list(organizationId: string, status?: JobStatus, search?: string) {
+  async list(organizationId: string, status?: JobStatus, search?: string, assignedTechnicianId?: string) {
     return this.prisma.client.job.findMany({
       where: {
         organizationId,
         deletedAt: null,
         ...(status ? { status } : {}),
+        ...(assignedTechnicianId ? { assignedTechnicianId } : {}),
         ...(search
           ? {
               OR: [
@@ -58,8 +59,12 @@ export class JobsService {
         customer: true,
         assignedTechnician: { include: { user: { select: { fullName: true } } } },
         diagnoses: { orderBy: { createdAt: "asc" } },
+        notes: { orderBy: { createdAt: "asc" } },
         estimates: { orderBy: { version: "desc" }, include: { items: true } },
         approvals: { include: { itemDecisions: true } },
+        parts: { orderBy: { createdAt: "asc" } },
+        labor: { orderBy: { createdAt: "asc" } },
+        invoices: { orderBy: { version: "desc" }, include: { items: true, payments: true } },
       },
     });
     if (!job) {
@@ -235,6 +240,97 @@ export class JobsService {
       await tx.jobStatusEvent.create({
         data: { jobId, fromStatus, toStatus, actorUserId, note },
       });
+
+      // COLLECTED triggers a permanent ServiceRecord and the job then
+      // moves straight to the terminal CLOSED state (docs/DOMAIN.md §5,
+      // §12 "Aftercare") — this is not a separate staff action, it's the
+      // automatic consequence of "the customer picked up the vehicle."
+      // Inlined (rather than a separately-typed helper) because the
+      // interactive-transaction client's extended type isn't structurally
+      // assignable back to Prisma's own TransactionClient type — same
+      // constraint noted in approvals.service.ts.
+      if (toStatus === JobStatus.COLLECTED) {
+        const [diagnoses, notes, approvedEstimate, parts, labor, invoice] = await Promise.all([
+          tx.diagnosis.findMany({ where: { jobId, organizationId }, orderBy: { createdAt: "asc" } }),
+          tx.jobNote.findMany({ where: { jobId, organizationId }, orderBy: { createdAt: "asc" } }),
+          tx.estimate.findFirst({
+            where: { jobId, organizationId, status: { in: ["APPROVED", "SENT"] } },
+            orderBy: { version: "desc" },
+            include: { items: true },
+          }),
+          tx.jobPart.findMany({ where: { jobId, organizationId }, orderBy: { createdAt: "asc" } }),
+          tx.jobLabor.findMany({ where: { jobId, organizationId }, orderBy: { createdAt: "asc" } }),
+          tx.invoice.findFirst({
+            where: { jobId, organizationId, status: "ISSUED" },
+            orderBy: { version: "desc" },
+            include: { items: true, payments: { where: { voidedAt: null } } },
+          }),
+        ]);
+
+        const amountPaid = invoice?.payments.reduce((sum, p) => sum + p.amount, 0) ?? 0;
+        const warrantyMonths = parts.reduce((max, p) => Math.max(max, p.warrantyMonths ?? 0), 0);
+
+        await tx.serviceRecord.create({
+          data: {
+            jobId,
+            vehicleId: job.vehicleId,
+            organizationId,
+            garageId: job.garageId,
+            serviceDate: new Date(),
+            mileage: job.mileageAtIntake,
+            summary: {
+              complaint: job.complaint,
+              diagnoses: diagnoses.map((d) => ({
+                observedProblem: d.observedProblem,
+                confirmedCause: d.confirmedCause,
+                recommendedRepair: d.recommendedRepair,
+                severity: d.severity,
+                createdAt: d.createdAt.toISOString(),
+              })),
+              notes: notes.map((n) => ({ note: n.note, createdAt: n.createdAt.toISOString() })),
+              workPerformed: {
+                parts: parts.map((p) => ({
+                  name: p.name,
+                  partNumber: p.partNumber,
+                  brand: p.brand,
+                  condition: p.condition,
+                  quantity: p.quantity,
+                  warrantyMonths: p.warrantyMonths,
+                })),
+                labor: labor.map((l) => ({ description: l.description, hours: l.hours })),
+              },
+              estimateApproved: approvedEstimate
+                ? {
+                    version: approvedEstimate.version,
+                    total: approvedEstimate.total,
+                    items: approvedEstimate.items.map((i) => ({ description: i.description, type: i.type })),
+                  }
+                : null,
+              invoice: invoice
+                ? { total: invoice.total, currency: invoice.currency, amountPaid, balance: invoice.total - amountPaid }
+                : null,
+              warrantyMonths: warrantyMonths || null,
+            },
+          },
+        });
+
+        const closed = await tx.job.update({
+          where: { id: jobId, organizationId },
+          data: { status: JobStatus.CLOSED },
+        });
+        await tx.jobStatusEvent.create({
+          data: {
+            jobId,
+            fromStatus: JobStatus.COLLECTED,
+            toStatus: JobStatus.CLOSED,
+            actorUserId,
+            note: "Auto-closed after service record was created",
+          },
+        });
+
+        return closed;
+      }
+
       return job;
     });
 

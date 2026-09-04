@@ -84,6 +84,32 @@ resolution seems stuck on old behavior, delete `apps/api/dist` and
 `apps/api/*.tsbuildinfo` — `nest start`'s incremental TypeScript build cache
 can get confused by out-of-band edits to workspace dependencies.
 
+## Running Garage Web
+
+```bash
+cp apps/garage-web/.env.local.example apps/garage-web/.env.local  # points at the local API
+pnpm --filter @le-garage/garage-web dev
+```
+
+Listens on `http://localhost:3000`. Requires the API running (above) and
+`@le-garage/types`/`@le-garage/validation` built (`pnpm --filter
+@le-garage/types build && pnpm --filter @le-garage/validation build` —
+see the "Why built dist, not raw source" note above; the same reasoning
+applies here).
+
+Sign in at `/login`, or set up a new garage at `/register` (this calls
+`POST /organizations` — the same endpoint the seeded demo data bypasses).
+The seeded demo login from "First-time setup" above
+(`owner@legarage.dev` / `password123`) also works once the API is
+running against the seeded database.
+
+Design system: `apps/garage-web/tailwind.config.ts` (color/type/spacing
+tokens) and `apps/garage-web/src/app/globals.css`. UI primitives live in
+`src/components/ui`; don't reach for a component library's default
+styling — extend the existing primitives so the app stays visually
+consistent. See `docs/DECISIONS.md` ADR-0013 for the reasoning behind the
+stack and design choices.
+
 ## Running tests
 
 ```bash

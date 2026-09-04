@@ -143,3 +143,160 @@ customer.
 node_modules resolution catches phantom-dependency bugs early, and
 Turborepo's task caching/pipeline model fits the `apps/*` + `packages/*`
 layout directly. Not revisited unless a concrete pain point emerges.
+
+---
+
+### ADR-0009: Workspace packages ship built `dist/`, not raw TS source
+
+**Status:** Accepted
+
+**Context:** `packages/database`/`types`/`validation` originally pointed
+`package.json#main` at `src/index.ts`. This worked for `tsc --noEmit`
+typechecking but broke `apps/api` at runtime: `nest start`'s non-webpack
+mode runs plain `node dist/main.js`, and this Node version's native
+(unflagged) TypeScript handling of `.ts` files applies strict ESM
+resolution to extensionless relative imports, which normal TypeScript
+source doesn't write for CommonJS. The failure mode was a confusing
+`ERR_MODULE_NOT_FOUND` pointing at a workspace package's internal file.
+
+**Decision:** Every shared package builds to `dist/` (`tsc -p
+tsconfig.json`) and `package.json#main`/`#types` point there.
+`apps/api`/`turbo.json`'s dependency graph (`dependsOn: ["^build"]`)
+ensures packages are built before dependents. `dev` scripts run `tsc
+--watch` so local iteration still sees changes quickly.
+
+**Why:** This is also just the correct shape for a package a bundler-free
+Node process consumes — no bundler-specific resolution magic required, and
+it matches how these packages will be consumed once there's a second
+backend or a build step for `garage-web`. See `docs/DEVELOPMENT.md` for
+the full explanation kept next to the commands it affects.
+
+---
+
+### ADR-0010: Invoices are generated from actual `JobPart`/`JobLabor`, not from the `Estimate`
+
+**Status:** Accepted
+
+**Context:** `Estimate`/`EstimateItem` represent the **quote**: what the
+garage proposed and the customer approved before work started. What
+actually gets billed should reflect what actually happened during the
+repair — which can differ in minor ways (a part substitution, slightly
+different labor time) even within an approved scope.
+
+**Decision:** `InvoicesService.generateDraft` builds `InvoiceItem` rows
+from the job's `JobPart` and `JobLabor` rows, not from `EstimateItem`s.
+MVP does **not** cross-validate that recorded parts/labor stay within the
+approved estimate scope (no product-matching heuristics) — the garage is
+trusted to record work honestly; this is flagged in `OPEN_QUESTIONS.md`
+rather than silently assumed.
+
+**Why:** An invoice generated from the *quote* would be wrong the moment
+reality diverges from the plan (which is the common case, not the
+exception, in vehicle repair). Generating it from the actual work log is
+both more accurate and matches the brief's own phrasing: "Part → Job →
+Invoice."
+
+---
+
+### ADR-0011: `Invoice` is versioned like `Estimate`; parts/labor lock once an invoice is `ISSUED`
+
+**Status:** Accepted
+
+**Context:** The original schema had `Invoice.jobId` as `@unique` (one
+invoice per job ever), which cannot represent "void this invoice and issue
+a corrected one" — exactly the correction strategy `DATABASE.md` §8
+already committed to before any invoice code existed.
+
+**Decision:** `Invoice` gained a `version` field and
+`@@unique([jobId, version])`, mirroring `Estimate` exactly: `DRAFT` is
+mutable in place, `ISSUED` is frozen, a correction `VOID`s the current one
+and generates `version + 1`. Additionally, `JobPart`/`JobLabor` become
+immutable (`apps/api/src/common/job-financial-lock.ts`) while an `ISSUED`
+invoice exists for the job — otherwise ADR-0010's "invoice reflects actual
+parts/labor" guarantee would silently stop being true the moment someone
+edited a part after invoicing.
+
+**Why:** Consistent with ADR-0004's reasoning for estimates: financial
+documents that can be silently edited after being shown to a customer are
+a dispute waiting to happen. The migration for this (`prisma/migrations/
+..._job_notes_and_invoice_versioning`) landed before any real invoice data
+existed, so the constraint change was free.
+
+---
+
+### ADR-0012: `COLLECTED` atomically writes the `ServiceRecord` and cascades to `CLOSED`
+
+**Status:** Accepted
+
+**Decision:** `JobsService.transitionStatus`, when `toStatus ===
+COLLECTED`, gathers the job's diagnoses/notes/parts/labor/approved
+estimate/issued invoice and writes a `ServiceRecord`, then immediately
+performs a second transition to `CLOSED` with its own `JobStatusEvent` —
+all inside the one database transaction that also wrote the `COLLECTED`
+transition itself.
+
+**Why:** `DOMAIN.md` describes `CLOSED` as "set after ServiceRecord is
+written," i.e. an automatic consequence, not a separate staff decision —
+there's no meaningful business action for a human to take between "vehicle
+was collected" and "history is recorded." Making it one atomic operation
+also removes an entire class of bug: a job stuck `COLLECTED` with no
+service history because a second API call was never made, or a
+`ServiceRecord` that exists for a job that technically never finished
+transitioning.
+
+---
+
+### ADR-0013: `garage-web` stack — Next.js 15 (App Router), Tailwind, Radix primitives, TanStack Query, IBM Plex
+
+**Status:** Accepted
+
+**Context:** Building the first real UI, with an explicit brief to make it
+feel like "premium software that happens to be incredibly easy to use,"
+not a generic admin-dashboard template.
+
+**Decision:**
+- **Next.js 15 App Router**, client-heavy (most pages are `"use client"`)
+  since this is an authenticated operational tool, not content that
+  benefits from server rendering/SEO. Route groups `(auth)`/`(app)` split
+  the unauthenticated shell from the protected one.
+- **Tailwind CSS** with a small, deliberate token set (`tailwind.config.ts`)
+  rather than an off-the-shelf component kit's default theme — see the
+  design tokens below.
+- **Unstyled Radix UI primitives** (`Dialog`, `Select`, `Tabs`,
+  `DropdownMenu`) for the accessibility mechanics (focus trapping,
+  keyboard nav, ARIA) — no shadcn/ui CLI scaffold; components in
+  `src/components/ui` are hand-written against Radix, styled to the token
+  system, because the brief explicitly rejects a template look and
+  shadcn's default primitives read as exactly that template look until
+  heavily reskinned anyway.
+- **TanStack Query** for all server state (every list/detail page, every
+  mutation) — no Redux/Zustand global store; there is no meaningful client
+  state in this app that isn't either server data or per-component form
+  state.
+- **Typography:** IBM Plex Sans (UI text, headings) + IBM Plex Mono
+  (license plates, VINs, money, mileage, timestamps — anywhere precise
+  numbers are scanned or compared). Chosen over the ubiquitous
+  Inter-everywhere SaaS default specifically because the mono face does
+  real work here (tabular alignment for exactly the data types this
+  product revolves around), not as decoration.
+- **Color:** near-black ink on warm off-white paper (light-mode only in
+  MVP — a garage front desk is a bright, daylight environment,
+  `docs/UX.md` §"daylight glare"; dark mode isn't a stated need), one
+  accent (`signal`, a dashboard-gauge amber/copper, `#C2540A`) reserved for
+  primary actions and things that genuinely need attention, plus two
+  desaturated status colors (`good`, `danger`). No gradients, no neon, no
+  per-status rainbow badges.
+- **Signature element:** the job timeline (`src/components/jobs/
+  job-timeline.tsx`) — a connected-node stepper rendering the job's
+  progress through `DOMAIN.md` §5's stages. Appears compact on every job
+  row and full-size on every job detail page, so "where is this car right
+  now" is answerable without reading a single label.
+
+**Why:** The brief was explicit and detailed about visual restraint,
+human-language copy, and not looking AI-generated-Dribbble/generic-SaaS —
+these choices were made deliberately against that brief rather than
+defaulting to the most common current stack (dark-mode-plus-neon-accent or
+cream-plus-serif templates), see the design-plan reasoning captured in
+conversation at implementation time. Component/token decisions live in
+`tailwind.config.ts` and `src/app/globals.css` — change the design system
+there, not by overriding classes ad hoc in individual components.

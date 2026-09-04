@@ -109,4 +109,19 @@ export class VehiclesService {
       orderBy: { intakeAt: "desc" },
     });
   }
+
+  /**
+   * The durable, owner-facing record (docs/DOMAIN.md §3/§8, docs/MVP.md) —
+   * "what happened to my car?" Built from ServiceRecord rows written when
+   * a job is COLLECTED (docs/DOMAIN.md §5); never assembled ad hoc from
+   * live job state, so it stays trustworthy even if a job is later
+   * archived.
+   */
+  async serviceHistory(organizationId: string, vehicleId: string) {
+    await this.getById(organizationId, vehicleId);
+    return this.prisma.client.serviceRecord.findMany({
+      where: { organizationId, vehicleId },
+      orderBy: { serviceDate: "desc" },
+    });
+  }
 }

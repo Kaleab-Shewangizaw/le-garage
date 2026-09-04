@@ -17,8 +17,13 @@ import { CustomersModule } from "./customers/customers.module";
 import { VehiclesModule } from "./vehicles/vehicles.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { DiagnosesModule } from "./diagnoses/diagnoses.module";
+import { NotesModule } from "./notes/notes.module";
 import { EstimatesModule } from "./estimates/estimates.module";
 import { ApprovalsModule } from "./approvals/approvals.module";
+import { PartsModule } from "./parts/parts.module";
+import { LaborModule } from "./labor/labor.module";
+import { InvoicesModule } from "./invoices/invoices.module";
+import { PaymentsModule } from "./payments/payments.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthController } from "./health.controller";
 
@@ -38,8 +43,13 @@ import { HealthController } from "./health.controller";
     VehiclesModule,
     JobsModule,
     DiagnosesModule,
+    NotesModule,
     EstimatesModule,
     ApprovalsModule,
+    PartsModule,
+    LaborModule,
+    InvoicesModule,
+    PaymentsModule,
     DashboardModule,
   ],
   controllers: [HealthController],

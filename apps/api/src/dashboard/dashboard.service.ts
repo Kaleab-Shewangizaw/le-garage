@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { JobStatus } from "@le-garage/database";
+import { InvoiceStatus, JobStatus } from "@le-garage/database";
 import { PrismaService } from "../common/prisma/prisma.service";
 
 @Injectable()
@@ -14,7 +14,7 @@ export class DashboardService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [statusCounts, jobsIntakenToday, jobsCollectedToday, awaitingApproval, blockedOnParts] = await Promise.all([
+    const [statusCounts, jobsIntakenToday, jobsCollectedToday, awaitingApproval, blockedOnParts, issuedTotal, paidTotal] = await Promise.all([
       this.prisma.client.job.groupBy({
         by: ["status"],
         where: { organizationId, deletedAt: null },
@@ -32,9 +32,18 @@ export class DashboardService {
       this.prisma.client.job.count({
         where: { organizationId, deletedAt: null, status: JobStatus.WAITING_PARTS },
       }),
+      this.prisma.client.invoice.aggregate({
+        where: { organizationId, status: InvoiceStatus.ISSUED },
+        _sum: { total: true },
+      }),
+      this.prisma.client.payment.aggregate({
+        where: { organizationId, voidedAt: null, invoice: { status: InvoiceStatus.ISSUED } },
+        _sum: { amount: true },
+      }),
     ]);
 
     const countsByStatus = Object.fromEntries(statusCounts.map((s) => [s.status, s._count._all]));
+    const outstandingBalance = (issuedTotal._sum.total ?? 0) - (paidTotal._sum.amount ?? 0);
 
     return {
       countsByStatus,
@@ -45,6 +54,7 @@ export class DashboardService {
       jobsCollectedToday,
       jobsAwaitingApproval: awaitingApproval,
       jobsBlockedOnParts: blockedOnParts,
+      outstandingBalance,
     };
   }
 }

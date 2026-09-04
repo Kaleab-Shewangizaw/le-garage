@@ -61,6 +61,23 @@ would make us revisit it.
     `supersedesInvoiceId` with the old one `VOID`ed (`DATABASE.md` §8).
     Not yet validated against real-world Ethiopian invoicing/tax norms —
     revisit if a pilot garage has specific compliance requirements here.
+11. **No cross-validation between recorded parts/labor and the approved
+    estimate scope.** Assumption: the API lets staff record any `JobPart`/
+    `JobLabor` on a job regardless of what was actually approved
+    (`DOMAIN.md` §3, ADR-0010) — the platform trusts the garage rather than
+    trying to match free-text estimate line descriptions against part/labor
+    entries, which would need real product-matching logic to do honestly.
+    This means the invoice could, in principle, bill for something the
+    customer never approved, with no system-level guardrail beyond staff
+    judgment and the audit trail. Revisit if this becomes a real dispute
+    vector in pilot usage — likely fix is a UI-level nudge (show approved
+    scope alongside the parts/labor form) before anything more structural.
+12. **Technician write access to parts/labor is not scoped to their own
+    assigned job.** Any staff member (including a technician not assigned
+    to a given job) can currently add parts/labor to it — matches
+    `docs/OPEN_QUESTIONS.md` #6's existing "read access is broad, write
+    restriction unresolved" stance, now extended to these two resources.
+    Revisit together with #6.
 
 ## Infrastructure
 
