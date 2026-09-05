@@ -144,9 +144,16 @@ is supposed to avoid (brief §29).
 - **Week 3-4:** repeat visits with the first garages to see whether real
   usage sticks (the "active garage-days" metric matters more here than
   raw job counts), plus first visits with any remaining garages.
-- **After:** a genuine go/no-go decision on Phase 10 (owner app),
-  informed by whether the garage-side loop actually proved itself with
-  real garages, not by a fixed calendar date.
+- **After:** Phase 10 (owner app, `OWNER-APP.md`) was actually built ahead
+  of this pilot, on explicit direction — not the after-pilot sequencing
+  this plan originally assumed. That makes the pilot's job, once garages
+  are actually using the estimate-approval loop, include watching whether
+  a real owner can register, find their garage's record, and approve an
+  estimate unaided — the same "watch, don't teach" discipline as §1,
+  applied to a screen that was designed without real owner-usage evidence
+  yet. Treat anything confusing there with the same weight as a garage-
+  side finding, not as a lower-priority afterthought because it shipped
+  second.
 
 ## 8. Definition of a successful pilot
 

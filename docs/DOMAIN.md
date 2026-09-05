@@ -92,7 +92,19 @@ system.
 ### VehicleOwnerHistory
 Append-only record of which `Customer` was the recorded owner of a `Vehicle`
 over which time range. Enables "multiple owners over time" (§7 of the
-top-level brief) without losing history when ownership changes.
+top-level brief) without losing history when ownership changes. Also the
+source of truth for owner-mobile's "my vehicles" query (`OWNER-APP.md`
+§6) — a vehicle currently belongs to whichever `Customer`'s row here has
+`endedAt: null`.
+
+### CustomerLink (Phase 10 — owner-mobile)
+Connects an owner-mobile `User` (no staff membership) to a garage-side
+`Customer` record — potentially several, one per organization the same
+real person has used. Matched by phone number but never auto-created:
+`GET /owner/customer-matches` only *surfaces* candidates, and creating
+the link (`POST /owner/customer-links`) re-verifies the phone match
+server-side. See `OWNER-APP.md` §5 for the full flow and
+`OPEN_QUESTIONS.md` #3 for the reasoning this resolved.
 
 ### Job (Job Card)
 The spine entity. One `Job` = one visit/repair cycle for one `Vehicle` at one
@@ -200,11 +212,15 @@ Cross-cutting: `entityType`, `entityId`, `action`, `actorUserId`,
 a shared interceptor/service for every sensitive mutation (see
 `SECURITY.md` §Auditability for the exact action list).
 
-### Notification (Phase 11, modeled now, not fully implemented)
+### Notification (foundation built in Phase 10, real push delivery deferred)
 `userId`, `channel` (`PUSH`/`SMS`/`TELEGRAM`/`WHATSAPP`/`IN_APP`), `type`,
-`payload`, `status`. The platform owns structured data and decides *what*
-to send; it deliberately does not reinvent messaging transport in MVP (see
-`PRODUCT.md` §"What we are not building").
+`title`, `body`, `payload`, `status`, `readAt`. `NotificationsService`
+writes a row (always `IN_APP`/`SENT` today) whenever a job-relevant event
+happens for a job whose customer has a linked owner — piggybacking on
+`AuditService.record` the same way realtime updates do. The owner app
+polls `GET /owner/notifications`. No device-token registration or actual
+push-service integration exists yet — see `OWNER-APP.md` §9 and
+`OPEN_QUESTIONS.md`.
 
 ## 4. Vehicle identity (critical decision)
 
