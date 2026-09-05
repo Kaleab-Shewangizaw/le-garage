@@ -8,7 +8,6 @@ import { Section } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/status-pill";
 import { formatMoney, formatDateTime } from "@/lib/format";
 import { useCreateEstimateDraft, useSendEstimate, useRecordApproval, useShareEstimate } from "@/hooks/use-jobs";
