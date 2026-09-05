@@ -6,6 +6,7 @@ import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { StorageModule } from "./common/storage/storage.module";
 import { RealtimeModule } from "./realtime/realtime.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { AllExceptionsFilter } from "./common/filters/http-exception.filter";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
@@ -28,6 +29,7 @@ import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { FilesModule } from "./files/files.module";
+import { OwnerModule } from "./owner/owner.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -39,6 +41,7 @@ import { HealthController } from "./health.controller";
     PrismaModule,
     StorageModule,
     RealtimeModule,
+    NotificationsModule,
     AuditModule,
     AuthModule,
     OrganizationsModule,
@@ -57,6 +60,7 @@ import { HealthController } from "./health.controller";
     PaymentsModule,
     DashboardModule,
     FilesModule,
+    OwnerModule,
   ],
   controllers: [HealthController],
   providers: [

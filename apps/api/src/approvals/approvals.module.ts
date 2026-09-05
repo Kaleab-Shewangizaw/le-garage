@@ -5,5 +5,6 @@ import { ApprovalsService } from "./approvals.service";
 @Module({
   controllers: [ApprovalsController],
   providers: [ApprovalsService],
+  exports: [ApprovalsService],
 })
 export class ApprovalsModule {}

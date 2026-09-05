@@ -127,15 +127,28 @@ model User {
   staffMemberships StaffMember[]
   refreshTokens    RefreshToken[]
   auditLogEntries  AuditLog[]        @relation("AuditLogActor")
+  customerLinks    CustomerLink[]
+  notifications    Notification[]
 
   @@index([email])
   @@index([phone])
+}
+
+/// Which session type this refresh token belongs to (docs/DECISIONS.md
+/// ADR-0020). A single User can hold both a STAFF session (garage-web)
+/// and an OWNER session (owner-mobile) at once — the same person can work
+/// at a garage and separately own a car serviced elsewhere — so "kind" is
+/// a property of the *session*, not the user. Rotation must preserve it.
+enum TokenKind {
+  STAFF
+  OWNER
 }
 
 model RefreshToken {
   id         String    @id @default(uuid())
   userId     String
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       TokenKind @default(STAFF)
   tokenHash  String    @unique
   familyId   String
   expiresAt  DateTime
@@ -222,6 +235,7 @@ model Customer {
   jobs           Job[]
   ownedVehicles  VehicleOwnerHistory[]
   approvals      Approval[]            @relation("ApprovalDecidedByCustomer")
+  ownerLinks     CustomerLink[]
 
   @@index([organizationId, phone])
   @@index([organizationId, fullName])
@@ -252,6 +266,29 @@ model Vehicle {
   @@unique([vin])
   @@index([organizationId, licensePlate])
   @@index([organizationId])
+}
+
+/// Links an owner-mobile identity (User, with no staff membership) to a
+/// garage-side Customer record — potentially one per organization the same
+/// real person has used (docs/OWNER-APP.md §"Owner/garage relationship").
+/// Deliberately its own join table rather than a userId column on Customer:
+/// a Customer row is garage-owned data that predates any owner account, and
+/// linking must be an explicit, confirmed action (docs/OPEN_QUESTIONS.md
+/// #3 — matched by phone, never silently auto-merged), not an automatic
+/// side effect of matching phone numbers.
+model CustomerLink {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, customerId])
+  @@index([userId])
+  @@index([customerId])
 }
 
 model VehicleOwnerHistory {
@@ -661,19 +698,31 @@ model AuditLog {
   @@index([createdAt])
 }
 
+/// Foundation only — an in-app notification record (docs/OWNER-APP.md
+/// §"Notifications"). Real push delivery (device token registration,
+/// actually calling Expo's push service) is deliberately not built yet;
+/// `channel`/`status` exist so that layer can be added later without a
+/// schema change, but today every row is created as IN_APP/SENT and read
+/// by the owner app polling `GET /owner/notifications` — see
+/// docs/OPEN_QUESTIONS.md.
 model Notification {
   id     String @id @default(uuid())
   userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   channel NotificationChannel
   type    String
-  payload Json
+  title   String
+  body    String
+  payload Json?
   status  NotificationStatus @default(PENDING)
+  readAt  DateTime?
 
   createdAt DateTime @default(now())
   sentAt    DateTime?
 
   @@index([userId])
+  @@index([userId, readAt])
 }
 
 /// Backs the Idempotency-Key protection on critical mutations (docs/API.md
