@@ -67,10 +67,13 @@ dashboard       read-model/aggregation endpoints for the garage "what's happenin
 ```
 
 Cross-cutting (not domain modules, but framework-level concerns applied to
-all of the above): a `TenantGuard` (organization scoping), a `RolesGuard`
-(RBAC), a global `ValidationPipe` (Zod/class-validator at the boundary), a
-global exception filter (structured error shape, `API.md`), and an
-`AuditInterceptor` for the sensitive-action list in `SECURITY.md`.
+all of the above): `JwtAuthGuard` (authentication) + `RolesGuard` (RBAC) —
+tenant scoping is *not* a separate guard, see `SECURITY.md` §2 for why —
+a per-route `ZodValidationPipe` at the boundary, a global exception filter
+(structured error shape, `API.md`), `AuditService` (also the realtime
+event source, `SECURITY.md` §5, `DECISIONS.md` ADR-0016), and
+`IdempotencyInterceptor` on the handful of routes that need duplicate-
+action protection (`API.md` §1).
 
 ## 4. Tech stack
 
@@ -83,7 +86,7 @@ global exception filter (structured error shape, `API.md`), and an
 | Database | PostgreSQL | relational integrity matters a lot here (money, state machines, foreign keys) |
 | ORM | Prisma | type-safe schema-as-code, good migration story, single schema shared via `packages/database` |
 | Cache/jobs | Redis + BullMQ | notification dispatch, async work (invoice PDF generation, etc.) — introduced when the first real async job exists, not speculatively |
-| Realtime | Socket.IO | only where actually needed — initially: live job-board updates on the garage dashboard |
+| Realtime | Socket.IO | live job-board/detail updates — implemented; see §7a below |
 | Search | Meilisearch | deferred until Postgres `ILIKE`/trigram search on customers/vehicles is demonstrably insufficient |
 | File storage | S3-compatible object storage (MinIO locally, S3 in prod) | photos/videos/documents |
 | Auth | Custom JWT-based auth in the `auth` module (access + refresh tokens), password hashing via argon2 | see `AUTH.md` for why not to "invent authentication," and why this isn't reinventing it |
@@ -97,11 +100,13 @@ mobile architecture (`ETHIOPIA.md`) but do not change this stack choice.
 ```
 garage-web (Next.js) ──HTTPS──> apps/api (NestJS)
    │                                │
-   │  fetch with access token       ├─ TenantGuard: resolve organizationId from token, attach to request
+   │  fetch with access token       ├─ JwtAuthGuard: verify JWT, attach organizationId/garageId/role to request
    │                                ├─ RolesGuard: check StaffMember.role against route requirement
-   │                                ├─ ValidationPipe: validate body/query against Zod schema
-   │                                ├─ Controller → domain Service → Prisma (scoped by organizationId)
-   │                                ├─ AuditInterceptor: write AuditLog row for sensitive actions
+   │                                ├─ ZodValidationPipe: validate body/query against a Zod schema
+   │                                ├─ [IdempotencyInterceptor, if the route opts in: dedupe by Idempotency-Key]
+   │                                ├─ Controller → domain Service → Prisma (organizationId threaded through,
+   │                                │    mechanically enforced by a Prisma Client Extension — SECURITY.md §2)
+   │                                ├─ AuditService.record(): write AuditLog row + realtime broadcast for sensitive actions
    │                                └─ structured JSON response (API.md)
 ```
 
@@ -113,18 +118,47 @@ vehicles/jobs the owner has access to). The moment a diagnosis, estimate, or
 status change is saved, it exists for the owner app to read — the two apps
 share one backend and one data model by design (`PRODUCT.md` §3).
 
-## 7. Offline & mobile
+## 7a. Realtime (implemented)
 
-Not attempted broadly in MVP. `owner-mobile` (Phase 10) targets the specific
+`apps/api/src/realtime/realtime.gateway.ts` — a Socket.IO `/realtime`
+namespace, authenticated via the same access token passed in the
+connection handshake, joining one room per `organizationId` (never
+cross-tenant, `SECURITY.md` §2). Events (`job:changed { jobId }`,
+`board:changed {}`) carry no data — `garage-web`'s `RealtimeSync`
+component (mounted once in the authenticated app shell) just invalidates
+the relevant TanStack Query keys on receipt, and the normal REST fetch
+does the rest. The socket is not a source of truth and the app functions
+correctly (just less instantly) if it never connects.
+
+Emission is centralized: `AuditService.record()` optionally takes `jobId`/
+`affectsBoard` and emits after writing the audit row, rather than every
+service calling the gateway directly (`DECISIONS.md` ADR-0016) — since
+almost everything worth broadcasting is also worth auditing.
+
+## 7b. Offline & mobile resilience
+
+**Garage web (implemented, scoped):** a `ConnectionBanner` shows when the
+browser goes offline (`navigator.onLine` + the `online`/`offline` events)
+so a dropped connection is visible rather than silently failing requests.
+`Idempotency-Key` protection (`API.md` §1, `DECISIONS.md` ADR-0015) covers
+the mutations where a client-side retry after a timeout would otherwise
+risk double-applying: job creation and payment recording generate a
+stable key per form-instance (rotated after success) via
+`useIdempotencyKey`; the same backend mechanism is available to wire into
+any other mutation. This is deliberately narrower than full offline
+support — there is no local write queue or background sync in garage-web;
+a request made while offline simply fails visibly and can be retried once
+the banner clears.
+
+**Owner mobile (Phase 10, not yet built):** targets the specific
 workflows that actually need resilience to flaky connectivity (viewing
 already-fetched vehicle/job data, queuing an approval action). See
-`ROADMAP.md` and `docs/DEVELOPMENT.md` for the offline approach when Phase
-10 starts: local cache via a lightweight store (e.g. MMKV/SQLite), a small
-outbox queue for write actions (approve/reject), and idempotent API writes
-(client-generated idempotency keys) so a retried queued write can't double
-apply. Garage-side intake photo capture will need a similar queued-upload
-pattern before it's trustworthy on a workshop's real network — flagged here,
-not built until that module is reached.
+`ROADMAP.md` for the offline approach when Phase 10 starts: local cache
+via a lightweight store (e.g. MMKV/SQLite), a small outbox queue for write
+actions (approve/reject), and the same `Idempotency-Key` mechanism
+already running server-side so a retried queued write can't double apply.
+Garage-side intake photo capture already uses presigned direct-to-storage
+uploads (`SECURITY.md` §7) — the same pattern owner-mobile will reuse.
 
 ## 8. Deployment topology (MVP)
 

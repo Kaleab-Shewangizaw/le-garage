@@ -12,6 +12,7 @@ import { useAddDiagnosis, useAddJobNote } from "@/hooks/use-jobs";
 import { formatDateTime } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api-error";
 import { Badge } from "@/components/ui/status-pill";
+import { PhotoAttachments } from "@/components/jobs/photo-attachments";
 
 const SEVERITY_TONE: Record<string, "neutral" | "attention" | "danger"> = {
   LOW: "neutral",
@@ -25,6 +26,10 @@ export function OverviewTab({ job }: { job: Job }) {
     <div className="space-y-8">
       <Section title="Customer complaint">
         <p className="rounded-md bg-paper px-4 py-3 text-[13.5px] text-ink">{job.complaint}</p>
+      </Section>
+
+      <Section title="Photos">
+        <PhotoAttachments entityType="JOB" entityId={job.id} />
       </Section>
 
       <DiagnosisSection job={job} />

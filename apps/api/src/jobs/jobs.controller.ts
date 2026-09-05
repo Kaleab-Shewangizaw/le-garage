@@ -10,6 +10,7 @@ import {
 } from "@le-garage/validation";
 import type { AccessTokenPayload } from "@le-garage/types";
 import { Roles } from "../common/decorators/roles.decorator";
+import { Idempotent } from "../common/decorators/idempotent.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { JobsService } from "./jobs.service";
@@ -43,6 +44,7 @@ export class JobsController {
   }
 
   @Post()
+  @Idempotent()
   async createIntake(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(createJobSchema)) body: CreateJobInput,
@@ -51,6 +53,7 @@ export class JobsController {
   }
 
   @Patch(":id/status")
+  @Idempotent()
   async transitionStatus(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id") id: string,

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { createApprovalSchema, type CreateApprovalInput } from "@le-garage/validation";
 import type { AccessTokenPayload } from "@le-garage/types";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { Idempotent } from "../common/decorators/idempotent.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { ApprovalsService } from "./approvals.service";
 
@@ -15,6 +16,7 @@ export class ApprovalsController {
   }
 
   @Post("estimates/:estimateId/approvals")
+  @Idempotent()
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Param("estimateId") estimateId: string,

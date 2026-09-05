@@ -1,6 +1,7 @@
 import type {
   ApprovalDecision,
   ApprovalMethod,
+  AttachmentEntityType,
   EstimateItemType,
   EstimateStatus,
   InvoiceStatus,
@@ -269,4 +270,14 @@ export interface ServiceRecord {
     invoice: { total: number; currency: string; amountPaid: number; balance: number } | null;
     warrantyMonths: number | null;
   };
+}
+
+export interface Attachment {
+  id: string;
+  entityType: AttachmentEntityType;
+  objectKey: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByStaffId: string;
+  createdAt: string;
 }

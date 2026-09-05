@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { CreditCard, FileText, Receipt } from "lucide-react";
+import { CreditCard, FileText, Printer, Receipt } from "lucide-react";
 import type { Invoice, Job } from "@/lib/api-types";
 import { Section } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/status-pill";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { formatMoney, formatDateTime } from "@/lib/format";
 import { useGenerateInvoice, useIssueInvoice, useVoidInvoice, useRecordPayment } from "@/hooks/use-jobs";
+import { useIdempotencyKey } from "@/hooks/use-idempotency-key";
 import { useAuth } from "@/hooks/use-auth";
 import { humanizeApiError } from "@/lib/api-error";
 
@@ -104,6 +106,13 @@ export function InvoiceTab({ job }: { job: Job }) {
                 Void
               </Button>
             )}
+            {latest.status === "ISSUED" && (
+              <Button size="sm" variant="secondary" asChild>
+                <Link href={`/print/jobs/${job.id}/invoice`} target="_blank">
+                  <Printer className="h-3.5 w-3.5" /> Print
+                </Link>
+              </Button>
+            )}
           </div>
         }
       >
@@ -144,7 +153,8 @@ function PaymentsSection({ job, invoice, isFrontOffice }: { job: Job; invoice: I
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<"CASH" | "TELEBIRR" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [reference, setReference] = useState("");
-  const recordPayment = useRecordPayment(job.id, invoice.id);
+  const idempotency = useIdempotencyKey();
+  const recordPayment = useRecordPayment(job.id, invoice.id, idempotency.key);
 
   const activePayments = invoice.payments.filter((p) => !p.voidedAt);
   const amountPaid = activePayments.reduce((sum, p) => sum + p.amount, 0);
@@ -159,6 +169,7 @@ function PaymentsSection({ job, invoice, isFrontOffice }: { job: Job; invoice: I
       setAmount("");
       setReference("");
       setOpen(false);
+      idempotency.rotate();
     } catch (err) {
       toast.error("Couldn't record the payment", { description: humanizeApiError(err) });
     }

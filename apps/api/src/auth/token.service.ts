@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import type { AccessTokenPayload } from "@le-garage/types";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
+import { AuditService } from "../audit/audit.service";
 
 export interface StaffContext {
   userId: string;
@@ -30,6 +31,7 @@ export class TokenService {
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
   ) {}
 
   async issueTokenPair(ctx: StaffContext, familyId: string = randomUUID()): Promise<TokenPair> {
@@ -80,10 +82,22 @@ export class TokenService {
 
     if (stored.revokedAt || stored.expiresAt < new Date()) {
       // Reuse of a revoked/expired token in this family: treat as
-      // compromised and revoke the entire family (docs/AUTH.md §5).
+      // compromised and revoke the entire family (docs/AUTH.md §5). This
+      // is one of the highest-signal security events in the system — a
+      // legitimate client never presents an already-rotated token, so
+      // this either means a stolen token or a client bug; either way it's
+      // audited (docs/SECURITY.md §5).
       await this.prisma.client.refreshToken.updateMany({
         where: { familyId, revokedAt: null },
         data: { revokedAt: new Date() },
+      });
+      await this.audit.record({
+        organizationId: null,
+        entityType: "User",
+        entityId: stored.userId,
+        action: "REFRESH_TOKEN_REUSE_DETECTED",
+        actorUserId: stored.userId,
+        afterState: { familyId, wasAlreadyRevoked: !!stored.revokedAt, wasExpired: stored.expiresAt < new Date() },
       });
       throw AppError.unauthorized(
         "REFRESH_TOKEN_REUSE_DETECTED",

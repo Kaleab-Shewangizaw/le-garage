@@ -13,8 +13,8 @@ token rotation, expiry). We use:
   implementation, not custom code).
 - **JWT access + refresh tokens**, signed with a rotating secret
   (`jose`/`@nestjs/jwt`, a maintained library, not hand-rolled signing).
-- A standard **NestJS Guard** pipeline (`AuthGuard` → `TenantGuard` →
-  `RolesGuard`), which is the well-trodden pattern for this framework, not a
+- A standard **NestJS Guard** pipeline (`JwtAuthGuard` → `RolesGuard`,
+  §4 below), which is the well-trodden pattern for this framework, not a
   custom auth layer.
 
 If/when the product needs social login, SSO, or consumer-scale auth
@@ -55,12 +55,16 @@ to," enforced by ownership/linkage checks, not the garage RBAC table.
 Every protected endpoint answers, server-side: **who is allowed to perform
 this action on this resource?**
 
-1. `AuthGuard` — validates the JWT, attaches `req.user` (`userId`, and for
-   staff tokens, `organizationId`, `garageId`, `role`).
-2. `TenantGuard` — for any route touching a tenant-scoped resource, resolves
-   the resource's `organizationId` (from the route param's underlying
-   record, not just trusting a body field) and compares it to
-   `req.user.organizationId`. Mismatch → `404`, not `403` (§6 below — avoid
+1. `JwtAuthGuard` — validates the JWT, attaches `req.user` (`userId`, and
+   for staff tokens, `organizationId`, `garageId`, `staffMemberId`, `role`).
+2. Tenant scoping — **not a separate guard.** Every service method takes
+   `organizationId` as an explicit parameter (read from `req.user` via the
+   `@CurrentUser()` decorator in the controller) and passes it into every
+   Prisma query; a Prisma Client Extension mechanically enforces that the
+   parameter is actually present in the query's `where` clause (see
+   `SECURITY.md` §2 for why this ended up simpler than the originally
+   planned `TenantGuard` approach, and just as strict). A resource
+   belonging to another tenant → `404`, not `403` (§6 below — avoid
    confirming existence of another tenant's resource).
 3. `RolesGuard` — declarative `@Roles(Role.OWNER, Role.MANAGER)` decorator
    per route; rejects otherwise.

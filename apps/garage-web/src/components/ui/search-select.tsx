@@ -20,6 +20,7 @@ export function SearchSelect<T>({
   keyOf,
   onSelect,
   emptyHint,
+  recentLabel = "Recent",
 }: {
   placeholder: string;
   query: string;
@@ -30,9 +31,18 @@ export function SearchSelect<T>({
   keyOf: (item: T) => string;
   onSelect: (item: T) => void;
   emptyHint?: string;
+  /** Shown as a section label when the query is empty — the backend's "no
+   * search term" response is already ordered most-recent-first, so this
+   * doubles as a genuine "recently used" shortcut (docs/UX.md §9) at zero
+   * extra cost. */
+  recentLabel?: string;
 }) {
   const [focused, setFocused] = useState(false);
-  const showResults = focused && query.length > 0;
+  // Focus alone shows results now (not just once typing starts) — an
+  // empty query surfaces recently used customers/vehicles, removing a
+  // whole round of typing for the common "it's the same customer as last
+  // time" case.
+  const showResults = focused;
 
   return (
     <div className="relative">
@@ -58,9 +68,12 @@ export function SearchSelect<T>({
       </div>
       {showResults && (
         <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-line bg-surface shadow-overlay animate-fade-in">
+          {!isLoading && query.length === 0 && (results?.length ?? 0) > 0 && (
+            <div className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted">{recentLabel}</div>
+          )}
           {isLoading && <div className="px-3 py-2.5 text-[13px] text-graphite">Searching…</div>}
           {!isLoading && results?.length === 0 && (
-            <div className="px-3 py-2.5 text-[13px] text-graphite">{emptyHint ?? "No matches"}</div>
+            <div className="px-3 py-2.5 text-[13px] text-graphite">{query ? (emptyHint ?? "No matches") : "Nothing yet"}</div>
           )}
           {!isLoading &&
             results?.map((item) => (

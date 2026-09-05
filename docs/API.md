@@ -30,10 +30,22 @@
 - **Pagination:** cursor-based (`?cursor=&limit=`) on list endpoints,
   default `limit=20`, max `100`.
 - **IDs:** UUIDs in URLs (`/jobs/:jobId`).
-- **Idempotency:** mutation endpoints that a flaky-connectivity client
-  might retry (payment recording, approval submission) accept an optional
-  `Idempotency-Key` header; a repeated key with the same body returns the
-  original result instead of double-applying (`ARCHITECTURE.md` §7).
+- **Idempotency:** an optional `Idempotency-Key` header protects the
+  highest-risk mutations from duplication — job creation, estimate send,
+  approval recording, invoice issuance, payment recording, and job status
+  transitions (`@Idempotent()` in `apps/api/src/common/interceptors/
+  idempotency.interceptor.ts`, `DECISIONS.md` ADR-0015). A repeated key
+  against the same route replays the original response; a key still
+  `PENDING` (a genuinely concurrent duplicate) is rejected with `409
+  DUPLICATE_REQUEST_IN_PROGRESS`. Routes without the decorator ignore the
+  header entirely — it's opt-in per route, not a global behavior.
+- **Realtime:** Socket.IO at `/realtime` (same origin, separate namespace
+  from the REST API), authenticated via the same access token passed in
+  the connection handshake (`auth: { token }`). Events (`job:changed`,
+  `board:changed`) carry only IDs, never data — the client always
+  refetches over REST (`ARCHITECTURE.md` §"Realtime", `DECISIONS.md`
+  ADR-0016). Not a source of truth; safe to ignore entirely and just poll
+  if a client doesn't implement it.
 
 ## 2. Module → route map (MVP)
 
@@ -82,7 +94,8 @@ POST   /api/v1/jobs                              create (intake) — customer+ve
 GET    /api/v1/jobs?status=&search=&mine=true     dashboard/board query; mine=true = caller's own assigned jobs
                     &assignedTechnicianId=
 GET    /api/v1/jobs/:id                           full job card (diagnoses/notes/estimates/approvals/parts/labor/invoices embedded)
-PATCH  /api/v1/jobs/:id/status                    state-machine-validated transition (COLLECTED auto-cascades to CLOSED + ServiceRecord)
+PATCH  /api/v1/jobs/:id/status                    state-machine-validated transition (COLLECTED auto-cascades to CLOSED + ServiceRecord);
+                                                   optimistic-concurrency guarded — 409 JOB_CONCURRENTLY_MODIFIED if the job moved since you last read it (DECISIONS.md ADR-0014)
 PATCH  /api/v1/jobs/:id/assign                    assign technician  [OWNER, MANAGER, FRONT_DESK]
 GET    /api/v1/jobs/:id/events                    JobStatusEvent history
 ```
@@ -157,13 +170,29 @@ GET    /api/v1/vehicles/:id/service-history    ServiceRecord[], newest first
 Written automatically when a job reaches `COLLECTED` — there is no create
 route; it is not a user-facing write.
 
-### `files`
+### `files` — photo/document evidence (docs/DOMAIN.md §3, docs/SECURITY.md §7)
 ```
-POST   /api/v1/files/presign           issue a scoped, short-lived upload URL
+POST   /api/v1/files/presign           issue a scoped, short-lived upload URL   [rate-limited, 30/min]
 POST   /api/v1/files                   register uploaded object as an Attachment (entityType/entityId)
-GET    /api/v1/files/:id/url           signed read URL
+GET    /api/v1/files?entityType=&entityId=   list attachments for one entity
+GET    /api/v1/files/:id/url           signed read URL (10 min expiry)
+DELETE /api/v1/files/:id
 ```
-Not yet implemented (schema exists via `Attachment` — see `ROADMAP.md`).
+`entityType` is one of `JOB`/`DIAGNOSIS`/`ESTIMATE`/`VEHICLE`; the entity
+must belong to the caller's organization or `presign`/list/register 404.
+Allowed MIME types: `image/jpeg`, `image/png`, `image/webp`, `video/mp4`,
+`application/pdf`; 20MB limit (75MB for video) — enforced in
+`packages/validation/src/files.ts` and re-checked server-side, never
+trusted from the client alone.
+
+### `public` — the only unauthenticated surface (docs/DECISIONS.md ADR-0018)
+```
+GET    /api/v1/public/estimates/:token   read-only estimate + vehicle + garage info, no auth
+POST   /api/v1/jobs/:jobId/estimates/:estimateId/share   generates/returns the share token   [staff-authenticated]
+```
+Security rests on the token being unguessable (192 bits), not on
+tenant scoping — there is no organizationId to scope an anonymous
+request by. Rate-limited (30/min) against enumeration attempts.
 
 ### `dashboard`
 ```

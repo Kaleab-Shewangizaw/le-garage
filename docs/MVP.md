@@ -85,9 +85,21 @@ end-to-end in the browser — login → overview → new job (intake) →
 diagnosis → estimate → send → approval → technician assignment → parts/
 labor → invoice → payment → collect → vehicle service history — verified
 against the real API, not mocked data. See `ROADMAP.md` §"Garage Web
-status" for exactly what's built. Next: Phase 10 (owner app), or hardening
-the garage-web surface (file uploads, realtime board updates) — see
-`OPEN_QUESTIONS.md` for the tradeoffs on each.
+status" for exactly what's built.
+
+**Pilot-hardening pass complete** (production-readiness audit — security,
+reliability, files, realtime, mobile UX, financial/concurrency
+correctness): photo/document attachments, live job-board updates,
+optimistic-concurrency-safe status transitions, `Idempotency-Key`
+duplicate-action protection, a customer estimate share link, a printable
+invoice, a real backup/restore drill, and an expanded security test suite
+covering IDOR/privilege-escalation/malformed-input cases beyond the core
+tenant-isolation suite. See `DECISIONS.md` ADR-0014 through ADR-0018 and
+`PILOT.md` for what this unlocks. Next: run the actual pilot with 3–5
+garages (`PILOT.md`), then Phase 10 (owner app) — deliberately *after*
+the pilot, not before (brief §25: the garage workflow generates the data
+the owner app will consume; building it first risks rework if the pilot
+changes the workflow).
 
 ## 5. Assumptions made to keep the MVP unblocked
 

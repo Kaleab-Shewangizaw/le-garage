@@ -63,10 +63,10 @@ function useInvalidateJob(jobId: string) {
   };
 }
 
-export function useCreateJob() {
+export function useCreateJob(idempotencyKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateJobInput) => api.post<Job>("/jobs", input),
+    mutationFn: (input: CreateJobInput) => api.post<Job>("/jobs", input, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"], exact: false });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -208,10 +208,10 @@ export function useVoidInvoice(jobId: string) {
   });
 }
 
-export function useRecordPayment(jobId: string, invoiceId: string) {
+export function useRecordPayment(jobId: string, invoiceId: string, idempotencyKey?: string) {
   const invalidate = useInvalidateJob(jobId);
   return useMutation({
-    mutationFn: (input: RecordPaymentInput) => api.post<Payment>(`/invoices/${invoiceId}/payments`, input),
+    mutationFn: (input: RecordPaymentInput) => api.post<Payment>(`/invoices/${invoiceId}/payments`, input, idempotencyKey),
     onSuccess: invalidate,
   });
 }
@@ -222,5 +222,11 @@ export function useVoidPayment(jobId: string, invoiceId: string) {
     mutationFn: ({ paymentId, reason }: { paymentId: string; reason: string }) =>
       api.post<Payment>(`/invoices/${invoiceId}/payments/${paymentId}/void`, { reason }),
     onSuccess: invalidate,
+  });
+}
+
+export function useShareEstimate(jobId: string) {
+  return useMutation({
+    mutationFn: (estimateId: string) => api.post<{ shareToken: string }>(`/jobs/${jobId}/estimates/${estimateId}/share`),
   });
 }

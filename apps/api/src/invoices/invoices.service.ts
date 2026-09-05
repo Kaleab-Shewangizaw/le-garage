@@ -147,6 +147,7 @@ export class InvoicesService {
       action: existingDraft ? "INVOICE_DRAFT_REGENERATED" : "INVOICE_DRAFT_CREATED",
       actorUserId,
       afterState: invoice,
+      jobId,
     });
 
     return invoice;
@@ -174,6 +175,8 @@ export class InvoicesService {
       action: "INVOICE_ISSUED",
       actorUserId,
       afterState: updated,
+      jobId,
+      affectsBoard: true,
     });
 
     return updated;
@@ -214,6 +217,8 @@ export class InvoicesService {
       actorUserId,
       beforeState: { status: invoice.status },
       afterState: { status: updated.status, reason },
+      jobId,
+      affectsBoard: true,
     });
 
     return updated;

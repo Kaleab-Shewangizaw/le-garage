@@ -64,3 +64,28 @@ WhatsApp message. Every screen is judged against that bar.
 traceable back to one of the rules above. If a proposed screen can't be
 justified against them, that's a signal to simplify it, not a reason to
 add a new rule.
+
+## 6. Mobile audit findings (pilot-hardening pass)
+
+A real narrow-viewport (375px) pass through Job Detail caught two
+concrete violations of §12 ("the interface must remain usable... not
+simply make everything tiny") that a desktop-only check would have
+missed entirely:
+
+- **The job timeline's 8 stage labels collided into unreadable run-on
+  text** at phone width. Fixed by letting the timeline scroll
+  horizontally below a minimum width rather than compressing labels past
+  legibility (`components/jobs/job-timeline.tsx`) — a standard, familiar
+  pattern (the same one iOS/Android step-indicators use), not a
+  compromise.
+- **The estimate line-item builder's Description field collapsed to a
+  handful of pixels** once type/qty/price/delete controls all had to fit
+  the same row on a phone — the single most important field in that row
+  became the least usable. Fixed by giving Description its own full-width
+  row, with the secondary controls (type/qty/price) wrapping to a second
+  row (`components/jobs/tabs/estimate-tab.tsx`).
+
+Neither was visible in a desktop review — both only showed up by actually
+rendering the page at a real small-phone width, per this doc's own
+instruction (§12, brief). Treat "did I check it at 375px" as a real step
+in reviewing any new garage-web screen, not an afterthought.

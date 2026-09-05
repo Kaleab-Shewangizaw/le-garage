@@ -81,13 +81,39 @@ would make us revisit it.
 
 ## Infrastructure
 
-11. **Postgres Row-Level-Security as a second tenant-isolation layer.**
-    Assumption: not built in MVP; the Prisma middleware + guard + test
+13. **Postgres Row-Level-Security as a second tenant-isolation layer.**
+    Assumption: not built in MVP; the Prisma Client Extension + test
     suite (`SECURITY.md` §2) is the enforcement layer. Revisit before
     scaling past a handful of pilot tenants.
-12. **Managed identity provider vs. custom auth.** Assumption: custom
+14. **Managed identity provider vs. custom auth.** Assumption: custom
     (`DECISIONS.md` ADR-0007). Revisit when owner-mobile needs
     consumer-scale auth or a garage customer requires SSO.
+15. **`IdempotencyRecord` rows are never swept.** Assumption: fine at
+    pilot volume (a handful of garages, a few hundred protected mutations
+    a day at most) — the table just grows. Revisit with a scheduled
+    cleanup (delete rows past some age, e.g. 7 days) before real
+    production volume; not needed for the pilot itself.
+16. **Nightly database backups are documented and tested, not yet
+    automated.** `DATABASE.md` §12 has a verified `pg_dump`/`pg_restore`
+    procedure (actually exercised: dumped, restored into an isolated
+    container, data/foreign-keys/indexes confirmed intact), but no cron
+    job or scheduled task runs it anywhere yet. Acceptable for a pilot
+    running on a dev/staging host with manual oversight; not acceptable
+    once a garage's real, only copy of their business records depends on
+    it — must be automated before that's true.
+17. **Estimate share-link views aren't tracked.** `Estimate.shareToken`
+    exists and the public page works, but there's no record of whether a
+    customer actually opened the link (`PILOT.md` §5 metrics table).
+    Deliberately not built yet — a view-count needs its own thought about
+    what "viewed" should mean (unique visitor? every load?) and isn't
+    needed to ship the feature; add it if the pilot shows this metric
+    actually matters for a real decision.
+18. **Rate limiting doesn't cover every mutation route.** Applied to
+    login/refresh (`AUTH.md` §5), file presign, and public estimate
+    reads (`API.md` §"public") — matching `SECURITY.md` §10's stated
+    "targeted, not blanket" approach. Revisit if pilot usage (or abuse)
+    shows a different route needs it; don't add it speculatively
+    everywhere first.
 
 Add new entries here rather than leaving an assumption undocumented
 in code or chat.

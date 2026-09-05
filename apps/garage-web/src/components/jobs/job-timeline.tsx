@@ -67,9 +67,15 @@ export function JobTimeline({
     status === "WAITING_PARTS" ? "IN_PROGRESS" : status === "CLOSED" ? "COLLECTED" : status,
   );
 
+  // Full (non-compact) mode needs real horizontal room for 8 labeled
+  // stages — rather than squeezing them until the labels collide on a
+  // narrow phone (brief §12 "usable... not simply make everything
+  // tiny"), the row scrolls horizontally below a minimum width and stays
+  // legible; compact mode (list rows) has no labels so it never needs this.
   return (
-    <div className={cn("flex items-start", compact ? "gap-0" : "w-full")}>
-      {JOB_TIMELINE_STAGES.map((stage, i) => {
+    <div className={cn(!compact && "-mx-0.5 overflow-x-auto px-0.5")}>
+      <div className={cn("flex items-start", compact ? "gap-0" : "w-full min-w-[640px]")}>
+        {JOB_TIMELINE_STAGES.map((stage, i) => {
         const isDone = i < currentIndex;
         const isCurrent = i === currentIndex;
         const timestampField = STAGE_TIMESTAMP_FIELD[stage];
@@ -111,8 +117,9 @@ export function JobTimeline({
               </div>
             )}
           </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "Payment",
   "Attachment",
   "ServiceRecord",
+  "IdempotencyRecord",
 ]);
 
 const OPERATIONS_REQUIRING_ORG_WHERE = new Set([

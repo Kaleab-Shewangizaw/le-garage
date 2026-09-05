@@ -122,6 +122,8 @@ export class ApprovalsService {
       action: "APPROVAL_RECORDED",
       actorUserId,
       afterState: approval,
+      jobId: estimate.jobId,
+      affectsBoard: true,
     });
 
     return approval;

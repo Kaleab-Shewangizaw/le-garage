@@ -34,6 +34,7 @@ export class NotesService {
       action: "JOB_NOTE_ADDED",
       actorUserId,
       afterState: note,
+      jobId,
     });
 
     return note;

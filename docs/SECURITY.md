@@ -26,22 +26,41 @@ order (matches brief §32's own prioritization):
 
 ## 2. Tenant isolation (enforcement, not just convention)
 
+The originally planned design used a Prisma *middleware* plus a dedicated
+`TenantGuard` NestJS guard. What's actually built is simpler and, in
+practice, stronger — corrected here so this doc matches the code, not the
+plan:
+
 - Every tenant-scoped Prisma model carries `organizationId` directly
   (`DATABASE.md` §3).
-- A Prisma **middleware** (`apps/api/src/common/prisma/tenant-scope.middleware.ts`)
-  intercepts queries on tenant-scoped models and requires an
-  `organizationId` in the `where` clause when a tenant context is present
-  on the request-scoped Prisma client; the API never constructs a raw
-  Prisma client outside this wrapper for request-handling code paths.
-- `TenantGuard` (`AUTH.md` §4) is applied globally by default (opt-out per
-  route via `@Public()`/`@SkipTenantScope()` decorator for genuinely public
-  or platform-admin routes), so a new endpoint is tenant-safe unless someone
-  deliberately opts out — safe default, not safe-if-remembered.
-- **Tests:** a dedicated tenant-isolation test suite
-  (`apps/api/test/tenant-isolation.e2e-spec.ts`) creates two organizations
-  and asserts, for every tenant-scoped resource type, that org A's token
-  cannot read/write org B's records (expect `404`, per `AUTH.md` §6). This
-  suite is treated as a release gate, not a nice-to-have.
+- A **Prisma Client Extension** (`packages/database/src/tenant-scope.ts`,
+  `withTenantScopeGuard`) wraps every query on tenant-scoped models: it
+  throws outright on `findUnique`/`findUniqueOrThrow` (a global-uniqueness
+  lookup by `id` alone is exactly the IDOR shape this exists to prevent),
+  and requires `organizationId` to be present in the `where` clause for
+  `findFirst`/`findMany`/`update`/`updateMany`/`delete`/`deleteMany`/
+  `count`/`aggregate`/`groupBy`. This is mechanical, not a code-review
+  convention — a query missing the scope throws at runtime, in every
+  environment including tests. `packages/database/src/index.ts` exports
+  exactly one guarded client (`prisma`) for all request-handling code, and
+  one deliberately unguarded client (`prismaUnscoped`) for the single
+  legitimate exception: resolving which tenant an identity belongs to
+  *before* any tenant context exists (login, refresh, signup) — documented
+  inline at both the export and every call site.
+- There is no separate `TenantGuard`. `JwtAuthGuard` decodes the access
+  token and attaches `organizationId`/`garageId`/`role`/`staffMemberId` to
+  the request; every service method takes `organizationId` as an explicit
+  parameter and threads it into the guarded Prisma client on every call.
+  `RolesGuard` (`AUTH.md` §4) is the only other global guard, and it
+  checks role, not tenant — tenant safety comes entirely from the
+  extension plus this parameter-threading discipline.
+- **Tests:** `apps/api/test/tenant-isolation.e2e-spec.ts` creates two
+  organizations and asserts, for every tenant-scoped resource type, that
+  org A's token cannot read/write org B's records (expect `404`, per
+  `AUTH.md` §6) — extended in `apps/api/test/security-hardening.e2e-spec.ts`
+  to cover diagnoses, notes, files, and cross-org privilege escalation
+  attempts. Both are treated as a release gate, not a nice-to-have, and
+  both currently pass.
 
 ## 3. Approval integrity
 
@@ -108,8 +127,14 @@ of a `findFirst` + `organizationId` helper) at the code level.
   is checked.
 - Allowed MIME types are allow-listed (images: jpeg/png/webp; short video:
   mp4; documents: pdf) and enforced both client-side (fast feedback) and
-  server-side (the presigned policy constrains content-type and max size —
-  never trust the client's claimed type alone).
+  server-side. The presigned PUT constrains content-type but, notably,
+  *not* byte count — a max-size check at presign time only validates a
+  client's claimed size, which a malicious client could lie about. The
+  registration step (`FilesService.register`) closes that gap: it reads
+  the object's *actual* size via `HeadObjectCommand` and rejects
+  (deleting the oversized object) anything over the per-type limit — the
+  size that ends up in the `Attachment` row and the size that was
+  actually enforced are the same number.
 - Serving files back: private bucket, signed read URLs generated per
   request scoped to the requester's tenant/authorization — no public bucket
   listing, no guessable public URLs for tenant content.

@@ -22,11 +22,28 @@ export class AuthService {
     });
 
     if (!user) {
+      // Security event (docs/SECURITY.md §5, §8): a failed attempt against
+      // an identifier with no matching account. No entityId to attach it
+      // to, so it's recorded against the attempted identifier itself —
+      // never the password.
+      await this.audit.record({
+        organizationId: null,
+        entityType: "LoginAttempt",
+        entityId: input.identifier,
+        action: "LOGIN_FAILED_UNKNOWN_IDENTIFIER",
+      });
       throw AppError.unauthorized("INVALID_CREDENTIALS", "Invalid email/phone or password");
     }
 
     const passwordValid = await argon2.verify(user.passwordHash, input.password);
     if (!passwordValid) {
+      await this.audit.record({
+        organizationId: null,
+        entityType: "User",
+        entityId: user.id,
+        action: "LOGIN_FAILED_WRONG_PASSWORD",
+        actorUserId: user.id,
+      });
       throw AppError.unauthorized("INVALID_CREDENTIALS", "Invalid email/phone or password");
     }
 
@@ -34,6 +51,13 @@ export class AuthService {
       where: { userId: user.id, active: true },
     });
     if (!staffMember) {
+      await this.audit.record({
+        organizationId: null,
+        entityType: "User",
+        entityId: user.id,
+        action: "LOGIN_FAILED_NO_ACTIVE_STAFF_MEMBERSHIP",
+        actorUserId: user.id,
+      });
       throw AppError.unauthorized(
         "NO_ACTIVE_STAFF_MEMBERSHIP",
         "This account has no active staff membership at any garage",

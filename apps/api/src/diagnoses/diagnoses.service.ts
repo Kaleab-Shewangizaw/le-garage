@@ -35,6 +35,7 @@ export class DiagnosesService {
       action: "DIAGNOSIS_ADDED",
       actorUserId,
       afterState: diagnosis,
+      jobId,
     });
 
     return diagnosis;

@@ -8,6 +8,7 @@ import {
 } from "@le-garage/validation";
 import type { AccessTokenPayload } from "@le-garage/types";
 import { Roles } from "../common/decorators/roles.decorator";
+import { Idempotent } from "../common/decorators/idempotent.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { InvoicesService } from "./invoices.service";
@@ -37,6 +38,7 @@ export class InvoicesController {
   }
 
   @Post(":invoiceId/issue")
+  @Idempotent()
   async issue(
     @CurrentUser() user: AccessTokenPayload,
     @Param("jobId") jobId: string,

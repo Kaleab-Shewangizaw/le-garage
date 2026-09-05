@@ -4,6 +4,8 @@ import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 
 import { PrismaModule } from "./common/prisma/prisma.module";
+import { StorageModule } from "./common/storage/storage.module";
+import { RealtimeModule } from "./realtime/realtime.module";
 import { AllExceptionsFilter } from "./common/filters/http-exception.filter";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
@@ -25,6 +27,7 @@ import { LaborModule } from "./labor/labor.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { FilesModule } from "./files/files.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -34,6 +37,8 @@ import { HealthController } from "./health.controller";
     // a stricter per-route @Throttle on top of this.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     PrismaModule,
+    StorageModule,
+    RealtimeModule,
     AuditModule,
     AuthModule,
     OrganizationsModule,
@@ -51,6 +56,7 @@ import { HealthController } from "./health.controller";
     InvoicesModule,
     PaymentsModule,
     DashboardModule,
+    FilesModule,
   ],
   controllers: [HealthController],
   providers: [

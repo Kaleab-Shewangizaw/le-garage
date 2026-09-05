@@ -62,12 +62,15 @@ export class PaymentsService {
       action: "PAYMENT_RECORDED",
       actorUserId,
       afterState: payment,
+      jobId: invoice.jobId,
+      affectsBoard: true,
     });
 
     return payment;
   }
 
   async void(organizationId: string, invoiceId: string, paymentId: string, actorUserId: string, reason: string) {
+    const invoice = await this.getInvoice(organizationId, invoiceId);
     const payment = await this.prisma.client.payment.findFirst({ where: { id: paymentId, invoiceId, organizationId } });
     if (!payment) {
       throw AppError.notFound("PAYMENT_NOT_FOUND", "Payment not found");
@@ -89,6 +92,8 @@ export class PaymentsService {
       actorUserId,
       beforeState: { voidedAt: null },
       afterState: { voidedAt: updated.voidedAt, reason },
+      jobId: invoice.jobId,
+      affectsBoard: true,
     });
 
     return updated;

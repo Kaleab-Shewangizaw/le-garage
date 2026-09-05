@@ -35,6 +35,7 @@ export class LaborService {
       action: "JOB_LABOR_ADDED",
       actorUserId,
       afterState: labor,
+      jobId,
     });
 
     return labor;
@@ -57,6 +58,7 @@ export class LaborService {
       actorUserId,
       beforeState: before,
       afterState: updated,
+      jobId,
     });
 
     return updated;
@@ -75,6 +77,7 @@ export class LaborService {
       action: "JOB_LABOR_REMOVED",
       actorUserId,
       beforeState: before,
+      jobId,
     });
   }
 

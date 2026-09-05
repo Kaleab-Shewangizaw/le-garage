@@ -300,3 +300,143 @@ cream-plus-serif templates), see the design-plan reasoning captured in
 conversation at implementation time. Component/token decisions live in
 `tailwind.config.ts` and `src/app/globals.css` — change the design system
 there, not by overriding classes ad hoc in individual components.
+
+---
+
+### ADR-0014: Job status transitions use optimistic concurrency (a `status` guard in the UPDATE's `WHERE`)
+
+**Status:** Accepted
+
+**Context:** Pilot-readiness audit (docs/DOMAIN.md §5, brief "job state
+audit — test concurrent updates") found that `transitionStatus` read the
+job's current status, validated a transition against it, then wrote the
+new status unconditionally by `id` alone. Two concurrent requests reading
+the same stale status could both pass validation; Postgres row-locking
+serializes the two `UPDATE`s, but without a guard the second still
+succeeds, silently overwriting the first and writing a `JobStatusEvent`
+whose `fromStatus` no longer matched reality by the time it ran.
+
+**Decision:** The `UPDATE`'s `WHERE` clause now includes `status:
+fromStatus` (Prisma's extended-where-unique — `{id, organizationId,
+status}` — same mechanism already used for tenant scoping). If zero rows
+match (because another request already moved the job), Prisma throws
+`P2025`, caught and surfaced as `409 JOB_CONCURRENTLY_MODIFIED` — "someone
+else just updated this, refresh and try again" — instead of a silent
+second write.
+
+**Why:** This is standard optimistic concurrency control and the cheapest
+correct fix available: no new locking infrastructure, no polling, just a
+more precise `WHERE`. Verified under genuine concurrent load in
+`test/security-hardening.e2e-spec.ts` (two simultaneous transitions from
+the same status: exactly one succeeds, one gets 409, and the audit trail
+has exactly one event, not two conflicting ones).
+
+---
+
+### ADR-0015: Idempotency-Key protection via a `PENDING`/`COMPLETED` row under a unique constraint, not a cache
+
+**Status:** Accepted
+
+**Context:** Brief's "duplicate action protection" — real users double-tap,
+networks retry. Needed real protection for job creation, estimate send,
+approval, invoice issuance, and payment recording, not just a disabled
+button (which only protects against the very first double-click, not a
+client-side retry after a timeout with no response received).
+
+**Decision:** `IdempotencyRecord` (organizationId, route, key) is unique.
+`IdempotencyInterceptor` inserts a `PENDING` row *before* the handler
+runs; a second request with the same key either replays the stored
+response (row is `COMPLETED`) or is rejected with 409 (row is still
+`PENDING` — a genuinely concurrent duplicate). Opt-in via an
+`Idempotency-Key` header — routes that don't send one are unaffected.
+Applied via `@Idempotent()` only on the specific mutation routes named
+above, not globally.
+
+**Why:** A Redis-backed cache was the obvious alternative (Redis already
+runs via docker-compose) but wasn't justified: this needs to be
+transactionally consistent with the same Postgres the mutation itself
+writes to (so a completed-but-not-yet-committed race can't slip through),
+and the unique-constraint-as-mutex pattern gets that for free without a
+second datastore's failure modes to reason about. Revisit if idempotency
+records need a TTL/sweep at real volume — none exists yet, see
+`OPEN_QUESTIONS.md`.
+
+---
+
+### ADR-0016: Realtime events piggyback on `AuditService.record`, not a gateway call in every service
+
+**Status:** Accepted
+
+**Context:** Brief wants live job-board updates (status changes, new
+diagnosis, estimate sent, approval, payment, etc.) without turning the
+whole app realtime. Wiring a `RealtimeGateway` call into every one of the
+~15 mutation call sites across 9 services would work but duplicates a
+decision ("does this action matter enough to broadcast?") that's already
+being made at every one of those same call sites for auditing.
+
+**Decision:** `AuditService.record()` takes optional `jobId` and
+`affectsBoard` fields. When `jobId` is present, it emits a `job:changed`
+socket event (room-scoped to the organization, docs/SECURITY.md §2) after
+writing the audit row; `affectsBoard: true` also emits `board:changed`.
+Every mutation that matters for audit already calls `audit.record` — this
+makes it also the one place live updates fan out from, rather than a
+second parallel call tree.
+
+**Why:** Fewer places to remember to wire up, and the two concerns
+(audit-worthy, broadcast-worthy) overlap almost completely in practice —
+anything worth an audit trail is also worth telling other open tabs
+about. Events carry only IDs, never payloads — the client always
+refetches over REST (docs/ARCHITECTURE.md §"Realtime") — so there's no
+risk of the socket message and the database disagreeing.
+
+---
+
+### ADR-0017: Object storage via a thin `StorageService` wrapping the S3 SDK against MinIO, not a managed upload service
+
+**Status:** Accepted
+
+**Decision:** `apps/api/src/common/storage/storage.service.ts` wraps
+`@aws-sdk/client-s3` (MinIO locally, S3-compatible in production) behind
+presign/head/delete methods. `FilesService` issues short-lived presigned
+PUT URLs scoped to one exact object key and content-type; the browser
+uploads directly to storage, and the API only registers the resulting
+`Attachment` row after verifying (via `HeadObjectCommand`) that the
+object actually exists.
+
+**Why:** Matches the pattern already documented in `SECURITY.md` §7
+before any file code existed — the API was always meant to never proxy
+file bytes. The AWS SDK talking to MinIO's S3-compatible API means the
+exact same code path runs unchanged against real S3 in production; no
+managed upload provider (Uploadcare, Cloudinary, etc.) is justified at
+pilot scale, and would be one more external dependency + cost for a
+capability MinIO already provides via the infra that's already running.
+
+---
+
+### ADR-0018: Customer estimate sharing is a public read-only token link, not a full public-approval flow
+
+**Status:** Accepted
+
+**Context:** Brief §21/§24 wants a "customer-facing estimate" for the
+pilot. A full public approval flow (customer taps Approve/Reject on their
+own phone, no account) is the eventual Owner App experience, not
+something to half-build inside garage-web.
+
+**Decision:** `Estimate.shareToken` (192 bits random, unique, nullable —
+generated lazily on first "Share with customer" click) backs one
+unauthenticated route, `GET /public/estimates/:token`
+(`PublicEstimatesController`, deliberately separate from the staff-facing
+`EstimatesController`), returning read-only estimate + vehicle + garage
+info. There is no public approval endpoint — approval is still staff-
+logged (`VERBAL_LOGGED_BY_STAFF`/`PHONE`, docs/AUTH.md §7), matching how
+most pilot customers won't have an owner account yet. The public page
+says as much: "your garage will confirm this with you directly."
+
+**Why:** This is the smallest slice that delivers real trust-building
+value (the customer sees the same itemized estimate staff see, sent over
+WhatsApp/Telegram/SMS, docs/ETHIOPIA.md §3) without inventing customer
+authentication or a parallel approval-authorization model a few weeks
+before the real Owner App would need to solve that properly. Security
+rests entirely on token unguessability, not organizationId scoping —
+there is no tenant context for an anonymous visitor to be scoped by; see
+the reasoning inline in `EstimatesService.getByShareToken`.

@@ -3,6 +3,7 @@ import { Role } from "@le-garage/database";
 import { createEstimateSchema, type CreateEstimateInput } from "@le-garage/validation";
 import type { AccessTokenPayload } from "@le-garage/types";
 import { Roles } from "../common/decorators/roles.decorator";
+import { Idempotent } from "../common/decorators/idempotent.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { EstimatesService } from "./estimates.service";
@@ -33,11 +34,22 @@ export class EstimatesController {
 
   @Post(":estimateId/send")
   @Roles(Role.OWNER, Role.MANAGER, Role.FRONT_DESK)
+  @Idempotent()
   async send(
     @CurrentUser() user: AccessTokenPayload,
     @Param("jobId") jobId: string,
     @Param("estimateId") estimateId: string,
   ) {
     return this.estimatesService.send(user.organizationId, jobId, estimateId, user.sub);
+  }
+
+  @Post(":estimateId/share")
+  @Roles(Role.OWNER, Role.MANAGER, Role.FRONT_DESK)
+  async share(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("jobId") jobId: string,
+    @Param("estimateId") estimateId: string,
+  ) {
+    return this.estimatesService.share(user.organizationId, jobId, estimateId, user.sub);
   }
 }

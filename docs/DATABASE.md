@@ -154,6 +154,13 @@ ever `UPDATE`d on a `SENT`-or-later estimate or its items — this is what
 makes the audit trail in `DOMAIN.md` §6 actually true at the data layer,
 not just a policy.
 
+`Estimate.shareToken` (`String? @unique`) backs the customer share-link
+feature (`DECISIONS.md` ADR-0018) — 192 bits of randomness, generated
+lazily, looked up via the *unscoped* Prisma client (no organizationId to
+scope by for an anonymous visitor). It is the one column in the schema
+deliberately queried outside tenant scoping; see the doc comment on the
+field itself and on `prismaUnscoped` in `packages/database/src/index.ts`.
+
 ## 7. Approvals
 
 ```
@@ -210,7 +217,25 @@ mutable column. A payment that would push the balance negative is rejected
 at the service layer (`apps/api/src/payments/payments.service.ts`), not
 just documented as a convention.
 
-## 9. Indexing strategy (MVP, based on actual expected queries)
+## 9. Attachments and idempotency records
+
+`Attachment`: `organizationId`, `entityType` (`JOB`/`DIAGNOSIS`/`ESTIMATE`/
+`VEHICLE`), exactly one of `jobId`/`diagnosisId`/`estimateId`/`vehicleId`
+set (matching `entityType`), `objectKey` (the S3/MinIO key — never a
+public URL, `SECURITY.md` §7), `mimeType`, `sizeBytes`,
+`uploadedByStaffId`. The row is only created after the API confirms (via
+`HeadObjectCommand`) that the object was actually uploaded — a client
+claiming success isn't trusted by itself.
+
+`IdempotencyRecord`: `@@unique([organizationId, route, key])`, `status`
+(`PENDING`/`COMPLETED`), `responseStatus`/`responseBody` captured once the
+protected handler completes. Backs `Idempotency-Key` duplicate-action
+protection (`DECISIONS.md` ADR-0015) — the unique constraint itself is
+the concurrency primitive (a second `PENDING` insert attempt fails with
+`P2002`), not an application-level lock. Rows are not currently swept —
+flagged in `OPEN_QUESTIONS.md`.
+
+## 10. Indexing strategy (MVP, based on actual expected queries)
 
 - `Job(organizationId, status)` — dashboard board view
 - `Job(organizationId, vehicleId)` — vehicle history / "jobs for this car"
@@ -226,9 +251,63 @@ No search-engine (Meilisearch) index in MVP; Postgres `ILIKE`/`pg_trgm` on
 plate/phone/name is sufficient at expected MVP volume (`ARCHITECTURE.md`
 §4).
 
-## 10. Migrations
+## 11. Migrations
 
 Prisma Migrate, committed to `packages/database/prisma/migrations`. No
 manual SQL against production outside of a migration file. Seed script
 (`packages/database/prisma/seed.ts`) creates a demo organization/garage/
 staff/customer/vehicle for local development — see `DEVELOPMENT.md`.
+
+## 12. Backup and recovery
+
+**Every garage's entire business record — customers, vehicles, jobs,
+estimates, invoices, payments — lives in this one Postgres database.**
+Losing it is not an acceptable failure mode for a pilot, let alone
+production.
+
+**Strategy (MVP-appropriate — see `ROADMAP.md` for when this needs to
+grow up):**
+
+- **Frequency:** nightly `pg_dump -Fc` (custom format — supports
+  selective/parallel restore, smaller than plain SQL) of the production
+  database, retained for at least 14 days. For a pilot with a handful of
+  garages, nightly is enough; revisit toward continuous WAL archiving
+  (point-in-time recovery) before onboarding garages who'd lose a full
+  day's jobs to a bad restore point.
+- **Location:** the dump must land somewhere other than the database
+  host's own disk — object storage (the same S3-compatible bucket
+  infrastructure already in use for attachments, in a separate
+  `backups/` prefix, or a dedicated bucket) is the practical MVP choice.
+  A backup that lives next to the thing it backs up doesn't protect
+  against host loss.
+- **Restore procedure:**
+  ```bash
+  # Into a fresh/empty database:
+  pg_restore -U legarage -d legarage --no-owner --role=legarage backup.dump
+  ```
+  This is not theoretical — it was exercised for real during this
+  project's pilot-hardening pass: `pg_dump` from the running dev database,
+  restored into a freshly created, completely separate Postgres container,
+  with row counts, foreign-key joins, and index definitions verified to
+  match afterward. The same procedure applies at any scale; only the
+  `pg_dump`/`pg_restore` target flags change.
+- **Recovery expectations:** for a pilot, "restore into a fresh instance
+  and repoint `DATABASE_URL`" is an acceptable recovery path — a few
+  minutes of restore time plus deployment time, and up to 24 hours of
+  data loss (the gap since the last nightly dump) in the worst case. That
+  RPO is a deliberate, documented tradeoff for pilot scale, not an
+  oversight — tighten it (more frequent dumps, or WAL-based continuous
+  backup) before this stops being true for real customers depending on
+  it daily.
+- **Object storage (MinIO/S3) backup:** photos/documents are the other
+  thing that can't be regenerated. The same nightly-dump discipline
+  applies at the bucket level (`mc mirror` or the S3 provider's built-in
+  cross-region replication in production); not yet automated for local
+  dev, since local dev data is disposable by definition.
+
+**Not yet done** (tracked here rather than assumed): the nightly dump job
+itself is not yet scheduled/automated in any environment — this section
+documents the procedure and the tested restore path, not a running cron
+job. Standing that up is an infrastructure task for whichever host
+actually runs the pilot's production database, and is called out again in
+`ROADMAP.md`.

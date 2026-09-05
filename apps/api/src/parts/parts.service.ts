@@ -41,6 +41,7 @@ export class PartsService {
       action: "JOB_PART_ADDED",
       actorUserId,
       afterState: part,
+      jobId,
     });
 
     return part;
@@ -63,6 +64,7 @@ export class PartsService {
       actorUserId,
       beforeState: before,
       afterState: updated,
+      jobId,
     });
 
     return updated;
@@ -81,6 +83,7 @@ export class PartsService {
       action: "JOB_PART_REMOVED",
       actorUserId,
       beforeState: before,
+      jobId,
     });
   }
 

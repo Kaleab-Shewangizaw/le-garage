@@ -3,8 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { RealtimeSync } from "@/hooks/use-realtime-sync";
 import { Sidebar, MobileNav } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { Loader2 } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -24,15 +26,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-paper">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-          <div className="mx-auto max-w-[1400px] px-5 py-6 md:px-8 md:py-8">{children}</div>
-        </main>
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper">
+      <RealtimeSync />
+      <ConnectionBanner />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar />
+          <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+            <div className="mx-auto max-w-[1400px] px-5 py-6 md:px-8 md:py-8">{children}</div>
+          </main>
+        </div>
+        <MobileNav />
       </div>
-      <MobileNav />
     </div>
   );
 }

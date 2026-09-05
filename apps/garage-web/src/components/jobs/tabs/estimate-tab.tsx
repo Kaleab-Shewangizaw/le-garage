@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Send, Trash2 } from "lucide-react";
+import { FileText, Link2, Plus, Send, Trash2 } from "lucide-react";
 import type { Estimate, Job } from "@/lib/api-types";
 import { Section } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/status-pill";
 import { formatMoney, formatDateTime } from "@/lib/format";
-import { useCreateEstimateDraft, useSendEstimate, useRecordApproval } from "@/hooks/use-jobs";
+import { useCreateEstimateDraft, useSendEstimate, useRecordApproval, useShareEstimate } from "@/hooks/use-jobs";
 import { humanizeApiError } from "@/lib/api-error";
 
 interface DraftItem {
@@ -69,6 +69,7 @@ export function EstimateTab({ job }: { job: Job }) {
         {latest.status === "DRAFT" && (
           <SendEstimateAction job={job} estimate={latest} />
         )}
+        {latest.status !== "DRAFT" && <ShareEstimateAction job={job} estimate={latest} />}
         {latest.status === "SENT" && <ApprovalForm job={job} estimate={latest} />}
         {(latest.status === "APPROVED" || latest.status === "REJECTED") && <ApprovalSummary job={job} estimate={latest} />}
       </Section>
@@ -213,41 +214,47 @@ function EstimateBuilder({ job, seed, onDone }: { job: Job; seed?: Estimate; onD
     >
       <div className="space-y-2">
         {items.map((item) => (
-          <div key={item.key} className="flex items-start gap-2 rounded-md border border-line bg-surface p-2.5">
-            <Select value={item.type} onValueChange={(v) => updateItem(item.key, { type: v as "PART" | "LABOR" })}>
-              <SelectTrigger className="w-[92px] shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PART">Part</SelectItem>
-                <SelectItem value="LABOR">Labor</SelectItem>
-              </SelectContent>
-            </Select>
+          <div key={item.key} className="flex flex-wrap items-start gap-2 rounded-md border border-line bg-surface p-2.5">
+            {/* Description gets the full row on narrow screens — it's the
+                field that actually matters; squeezing it to a sliver
+                alongside four other controls made it unusable on a phone
+                (brief §12). Type/qty/price/delete share a second row. */}
             <Input
               placeholder="Description — e.g. Front brake pads"
               value={item.description}
               onChange={(e) => updateItem(item.key, { description: e.target.value })}
-              className="flex-1"
+              className="w-full sm:flex-1"
             />
-            <Input
-              placeholder="Qty"
-              value={item.quantity}
-              onChange={(e) => updateItem(item.key, { quantity: e.target.value.replace(/[^\d]/g, "") })}
-              className="w-16 shrink-0 text-right font-mono"
-            />
-            <Input
-              placeholder="Price (ETB)"
-              value={item.unitPrice}
-              onChange={(e) => updateItem(item.key, { unitPrice: e.target.value.replace(/[^\d.]/g, "") })}
-              className="w-28 shrink-0 text-right font-mono"
-            />
-            <button
-              type="button"
-              onClick={() => setItems((prev) => (prev.length > 1 ? prev.filter((i) => i.key !== item.key) : prev))}
-              className="mt-1.5 shrink-0 text-muted hover:text-danger"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-1">
+              <Select value={item.type} onValueChange={(v) => updateItem(item.key, { type: v as "PART" | "LABOR" })}>
+                <SelectTrigger className="w-[92px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PART">Part</SelectItem>
+                  <SelectItem value="LABOR">Labor</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Qty"
+                value={item.quantity}
+                onChange={(e) => updateItem(item.key, { quantity: e.target.value.replace(/[^\d]/g, "") })}
+                className="w-14 shrink-0 text-right font-mono"
+              />
+              <Input
+                placeholder="Price (ETB)"
+                value={item.unitPrice}
+                onChange={(e) => updateItem(item.key, { unitPrice: e.target.value.replace(/[^\d.]/g, "") })}
+                className="min-w-0 flex-1 text-right font-mono sm:w-28 sm:flex-none"
+              />
+              <button
+                type="button"
+                onClick={() => setItems((prev) => (prev.length > 1 ? prev.filter((i) => i.key !== item.key) : prev))}
+                className="shrink-0 text-muted hover:text-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         ))}
         <Button variant="ghost" size="sm" onClick={() => setItems((prev) => [...prev, blankItem()])}>
@@ -290,6 +297,30 @@ function SendEstimateAction({ job, estimate }: { job: Job; estimate: Estimate })
         loading={send.isPending}
       >
         <Send className="h-3.5 w-3.5" /> Send estimate
+      </Button>
+    </div>
+  );
+}
+
+function ShareEstimateAction({ job, estimate }: { job: Job; estimate: Estimate }) {
+  const share = useShareEstimate(job.id);
+
+  async function handleShare() {
+    try {
+      const { shareToken } = await share.mutateAsync(estimate.id);
+      const url = `${window.location.origin}/estimate/${shareToken}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied", { description: "Send it to the customer over WhatsApp, Telegram, or SMS." });
+    } catch (err) {
+      toast.error("Couldn't create a share link", { description: humanizeApiError(err) });
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center justify-between rounded-md bg-paper px-3.5 py-3">
+      <p className="text-[12.5px] text-graphite">Let the customer see this estimate on their own phone — no account needed.</p>
+      <Button size="sm" variant="secondary" onClick={handleShare} loading={share.isPending}>
+        <Link2 className="h-3.5 w-3.5" /> Copy customer link
       </Button>
     </div>
   );

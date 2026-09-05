@@ -402,6 +402,15 @@ model Estimate {
 
   supersedesEstimateId String?
 
+  /// An unguessable token letting a customer view this specific estimate
+  /// read-only, no account required (docs/PRODUCT.md §"Customer Approval
+  /// Experience", brief §21 "customer-facing estimate"). Generated lazily
+  /// on first "Share with customer" click, not on every estimate. Looked
+  /// up without an organizationId — a customer has no tenant context — so
+  /// it must be cryptographically unguessable; see FilesService-style
+  /// prismaUnscoped reasoning in apps/api/src/estimates.
+  shareToken String? @unique
+
   items     EstimateItem[]
   approvals Approval[]
   attachments Attachment[]
@@ -664,4 +673,26 @@ model Notification {
   sentAt    DateTime?
 
   @@index([userId])
+}
+
+/// Backs the Idempotency-Key protection on critical mutations (docs/API.md
+/// §1, docs/SECURITY.md — "duplicate action protection"). A caller-supplied
+/// key is unique per (organizationId, route); a second request with the
+/// same key while the first is still PENDING is rejected, and once
+/// COMPLETED the original response is replayed rather than re-executed.
+/// Rows are not currently swept — see docs/OPEN_QUESTIONS.md.
+model IdempotencyRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  route          String
+  key            String
+  status         String // PENDING | COMPLETED
+  responseStatus Int?
+  responseBody   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, route, key])
+  @@index([organizationId])
 }

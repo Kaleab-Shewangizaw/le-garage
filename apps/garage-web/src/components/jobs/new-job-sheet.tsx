@@ -11,6 +11,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { useCustomers } from "@/hooks/use-customers";
 import { useVehicles } from "@/hooks/use-vehicles";
 import { useCreateJob } from "@/hooks/use-jobs";
+import { useIdempotencyKey } from "@/hooks/use-idempotency-key";
 import type { Customer, Vehicle } from "@/lib/api-types";
 import { humanizeApiError } from "@/lib/api-error";
 
@@ -44,7 +45,8 @@ export function NewJobSheet({ trigger }: { trigger: React.ReactNode }) {
 
   const customers = useCustomers(customerQuery);
   const vehicles = useVehicles(vehicleQuery);
-  const createJob = useCreateJob();
+  const idempotency = useIdempotencyKey();
+  const createJob = useCreateJob(idempotency.key);
 
   function reset() {
     setCustomerQuery("");
@@ -61,6 +63,7 @@ export function NewJobSheet({ trigger }: { trigger: React.ReactNode }) {
     setNewYear("");
     setMileage("");
     setComplaint("");
+    idempotency.rotate();
   }
 
   const hasCustomer = !!selectedCustomer || (creatingCustomer && newCustomerName && newCustomerPhone);

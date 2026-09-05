@@ -156,6 +156,16 @@ diagnosis notes, photos, itemized estimates, explicit customer approvals
 (with an immutable audit trail of what was approved and when), warranty
 records, and comeback/dispute history — not from subjective ratings alone.
 
+**Implemented pilot-scale version:** a garage can attach photos (intake
+condition, damage, completed work) to a job, and share a read-only,
+no-login-required link to any sent estimate — the customer sees the exact
+itemized breakdown staff see, on their own phone, over whatever channel
+they already use (WhatsApp/Telegram/SMS, `ETHIOPIA.md` §3). Approval
+itself is still staff-logged in this phase (most customers won't have an
+owner account yet, `AUTH.md` §7) — the share link is the trust-building
+half of the loop; the Owner App (Phase 10) is where a customer approves
+directly.
+
 ## 11. Roadside assistance & Vehicle Assistant
 
 Both are real, important, **future** features. Specified at a product level

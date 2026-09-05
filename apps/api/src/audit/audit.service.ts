@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 export interface AuditEntry {
   organizationId: string | null;
@@ -9,6 +10,15 @@ export interface AuditEntry {
   actorUserId?: string | null;
   beforeState?: unknown;
   afterState?: unknown;
+  /**
+   * When set, piggybacks a realtime `job:changed` broadcast on this audit
+   * write (docs/ARCHITECTURE.md §"Realtime") — every meaningful mutation
+   * already calls `audit.record`, so this is the one place live updates
+   * fan out from rather than wiring a gateway call into every service.
+   */
+  jobId?: string | null;
+  /** Also broadcasts `board:changed` — for mutations that affect the jobs list/dashboard, not just one job's own detail page. */
+  affectsBoard?: boolean;
 }
 
 /**
@@ -18,7 +28,10 @@ export interface AuditEntry {
  */
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeGateway,
+  ) {}
 
   async record(entry: AuditEntry): Promise<void> {
     await this.prisma.client.auditLog.create({
@@ -32,5 +45,12 @@ export class AuditService {
         afterState: entry.afterState as never,
       },
     });
+
+    if (entry.organizationId && entry.jobId) {
+      this.realtime.emitJobChanged(entry.organizationId, entry.jobId);
+      if (entry.affectsBoard) {
+        this.realtime.emitBoardChanged(entry.organizationId);
+      }
+    }
   }
 }

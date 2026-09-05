@@ -41,6 +41,20 @@ Seeded logins (see `packages/database/prisma/seed.ts`):
 - `owner@legarage.dev` / `password123` (OWNER)
 - `tech@legarage.dev` / `password123` (TECHNICIAN)
 
+**Object storage (photo/document uploads):** the API creates its MinIO
+bucket (`legarage-attachments` by default) automatically on startup if it
+doesn't exist — no manual `mc mb` step needed for local dev. MinIO's
+console is at `http://localhost:9001` (same `legarage`/`legarage123`
+credentials as `docker-compose.yml`) if you want to browse uploaded
+objects directly. See `apps/api/.env.example` for the `S3_*` variables —
+`S3_ENDPOINT` must be reachable from both the API process and the
+browser, since presigned URLs are generated server-side but PUT/GET
+directly from the client.
+
+**Realtime:** the API also serves a Socket.IO namespace at `/realtime` on
+the same port as the REST API (no separate process or port) — nothing
+extra to run.
+
 ## Building the shared packages
 
 `apps/api` (and eventually `garage-web`/`owner-mobile`) consume
@@ -124,9 +138,15 @@ pnpm --filter @le-garage/api test:e2e
 `test/tenant-isolation.e2e-spec.ts` is the release-gate suite from
 `SECURITY.md` §2 — it registers two organizations and asserts one can never
 read/write the other's data. `test/job-lifecycle.e2e-spec.ts` walks the
-full vertical slice this phase implements (intake → diagnosis → estimate →
-send → approval → job APPROVED) and checks the state-machine guardrails and
-estimate versioning behavior.
+full vertical slice through estimates/approvals; `test/job-execution.
+e2e-spec.ts` continues through technicians/parts/labor/invoices/payments/
+service history. `test/security-hardening.e2e-spec.ts` covers the
+pilot-hardening pass specifically: concurrent job-status races,
+`Idempotency-Key` protection, IDOR beyond the core suite, malformed input,
+and — since it uploads a real oversized file straight to MinIO to prove
+the size limit is enforced against actual bytes, not a client's claim —
+**this suite needs MinIO running** (`docker compose up -d minio`,
+already part of the standard local setup above).
 
 ## Manually exercising the API
 

@@ -31,6 +31,8 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  /** Sent as `Idempotency-Key` — see IdempotencyInterceptor on the API side (docs/API.md §1). */
+  idempotencyKey?: string;
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
@@ -50,6 +52,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
     headers: {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
@@ -82,7 +85,9 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
 
 export const api = {
   get: <T>(path: string, query?: RequestOptions["query"]) => request<T>(path, { method: "GET", query }),
-  post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
-  patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
+  post: <T>(path: string, body?: unknown, idempotencyKey?: string) =>
+    request<T>(path, { method: "POST", body, idempotencyKey }),
+  patch: <T>(path: string, body?: unknown, idempotencyKey?: string) =>
+    request<T>(path, { method: "PATCH", body, idempotencyKey }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };

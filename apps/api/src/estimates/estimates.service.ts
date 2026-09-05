@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { randomBytes } from "crypto";
 import { EstimateStatus } from "@le-garage/database";
 import type { CreateEstimateInput } from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -116,6 +117,7 @@ export class EstimatesService {
       action: existingDraft ? "ESTIMATE_DRAFT_UPDATED" : "ESTIMATE_DRAFT_CREATED",
       actorUserId,
       afterState: estimate,
+      jobId,
     });
 
     return estimate;
@@ -157,9 +159,80 @@ export class EstimatesService {
       action: "ESTIMATE_SENT",
       actorUserId,
       afterState: updated,
+      jobId,
+      affectsBoard: true,
     });
 
     return updated;
+  }
+
+  /**
+   * Lazily generates (or returns the existing) unguessable share token for
+   * a SENT/decided estimate, so staff can hand a customer a read-only
+   * link (docs/PRODUCT.md §"Customer Approval Experience") without the
+   * customer needing an account. Only meaningful once an estimate has
+   * actually been sent — sharing a DRAFT would leak un-communicated
+   * pricing before the garage has committed to it.
+   */
+  async share(organizationId: string, jobId: string, estimateId: string, actorUserId: string) {
+    const estimate = await this.prisma.client.estimate.findFirst({ where: { id: estimateId, jobId, organizationId } });
+    if (!estimate) {
+      throw AppError.notFound("ESTIMATE_NOT_FOUND", "Estimate not found");
+    }
+    if (estimate.status === EstimateStatus.DRAFT) {
+      throw AppError.conflict("ESTIMATE_NOT_SENT", "Send the estimate before sharing it with the customer");
+    }
+    if (estimate.shareToken) {
+      return { shareToken: estimate.shareToken };
+    }
+
+    const shareToken = randomBytes(24).toString("base64url");
+    await this.prisma.client.estimate.update({
+      where: { id: estimateId, organizationId },
+      data: { shareToken },
+    });
+
+    await this.audit.record({
+      organizationId,
+      entityType: "Estimate",
+      entityId: estimateId,
+      action: "ESTIMATE_SHARE_LINK_CREATED",
+      actorUserId,
+      jobId,
+    });
+
+    return { shareToken };
+  }
+
+  /**
+   * The one deliberately unauthenticated read in the whole API (docs/
+   * SECURITY.md §7-adjacent reasoning) — a customer has no account or
+   * tenant context, only the link they were sent. Security rests entirely
+   * on the token being unguessable (192 bits of randomness) and the query
+   * being scoped to exactly one row by that token, never by organizationId
+   * (there is none to scope by). Returns only what a customer needs to
+   * understand and trust the estimate — no internal cost fields, no other
+   * customers' data, nothing beyond this one job's complaint/vehicle/items.
+   */
+  async getByShareToken(shareToken: string) {
+    const estimate = await this.prisma.unscopedClient.estimate.findUnique({
+      where: { shareToken },
+      include: {
+        items: true,
+        job: {
+          select: {
+            complaint: true,
+            vehicle: { select: { make: true, model: true, year: true, licensePlate: true } },
+            customer: { select: { fullName: true } },
+            garage: { select: { name: true, phone: true } },
+          },
+        },
+      },
+    });
+    if (!estimate) {
+      throw AppError.notFound("ESTIMATE_NOT_FOUND", "This link is no longer valid");
+    }
+    return estimate;
   }
 
   private async assertJobExists(organizationId: string, jobId: string) {

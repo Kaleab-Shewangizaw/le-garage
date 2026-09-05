@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { JobStatus, Role } from "@le-garage/database";
+import { JobStatus, Prisma, Role } from "@le-garage/database";
 import type { AssignTechnicianInput, CreateJobInput } from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
@@ -122,6 +122,8 @@ export class JobsService {
       action: "JOB_CREATED_INTAKE",
       actorUserId,
       afterState: job,
+      jobId: job.id,
+      affectsBoard: true,
     });
 
     return job;
@@ -190,6 +192,8 @@ export class JobsService {
       actorUserId,
       beforeState: { assignedTechnicianId: job.assignedTechnicianId },
       afterState: { assignedTechnicianId: technician.id },
+      jobId,
+      affectsBoard: true,
     });
 
     return updated;
@@ -229,9 +233,20 @@ export class JobsService {
 
     const timestampField = JOB_TIMESTAMP_FIELD[toStatus];
 
-    const updated = await this.prisma.client.$transaction(async (tx) => {
+    let updated;
+    try {
+      updated = await this.prisma.client.$transaction(async (tx) => {
+      // Optimistic concurrency: the WHERE clause requires the row to
+      // still be in `fromStatus` (the value this request read before
+      // validating the transition). Two concurrent requests reading the
+      // same stale status could otherwise both pass validation and both
+      // write — Postgres row-locking serializes the two UPDATEs, but
+      // without this guard the second one still succeeds unconditionally,
+      // silently overwriting the first with a JobStatusEvent whose
+      // `fromStatus` no longer matches reality. If zero rows match here,
+      // Prisma throws P2025, caught below as a 409 (docs/DECISIONS.md).
       const job = await tx.job.update({
-        where: { id: jobId, organizationId },
+        where: { id: jobId, organizationId, status: fromStatus },
         data: {
           status: toStatus,
           ...(timestampField ? { [timestampField]: new Date() } : {}),
@@ -315,7 +330,7 @@ export class JobsService {
         });
 
         const closed = await tx.job.update({
-          where: { id: jobId, organizationId },
+          where: { id: jobId, organizationId, status: JobStatus.COLLECTED },
           data: { status: JobStatus.CLOSED },
         });
         await tx.jobStatusEvent.create({
@@ -332,7 +347,17 @@ export class JobsService {
       }
 
       return job;
-    });
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+        throw AppError.conflict(
+          "JOB_CONCURRENTLY_MODIFIED",
+          "This job was updated by someone else just now — refresh and try again",
+          { from: fromStatus, to: toStatus },
+        );
+      }
+      throw err;
+    }
 
     await this.audit.record({
       organizationId,
@@ -342,6 +367,8 @@ export class JobsService {
       actorUserId,
       beforeState: { status: fromStatus },
       afterState: { status: toStatus, note },
+      jobId,
+      affectsBoard: true,
     });
 
     return updated;
