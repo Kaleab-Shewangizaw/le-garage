@@ -440,3 +440,39 @@ before the real Owner App would need to solve that properly. Security
 rests entirely on token unguessability, not organizationId scoping —
 there is no tenant context for an anonymous visitor to be scoped by; see
 the reasoning inline in `EstimatesService.getByShareToken`.
+
+---
+
+### ADR-0019: Performance pass fixes real gaps found by measurement, defers image optimization
+
+**Status:** Accepted
+
+**Context:** Brief §6 asked for a performance audit — "measure first, fix
+meaningful bottlenecks," not speculative optimization. A read-only audit
+of every service method, the Prisma schema's indexes, unbounded queries,
+and the frontend's image/query handling found: no N+1 patterns (list/
+detail endpoints already batch via Prisma `include`); one genuinely
+uncovered filter column (`Job.assignedTechnicianId`, used by the "my
+assigned jobs" view with no index); two unbounded `findMany` calls
+(`Attachment.list`, `Vehicle.jobHistory`/`serviceHistory`) that are
+harmless at today's data volume but have no ceiling; and a frontend photo
+tile that downloads a full-resolution phone photo to render an 80×80px
+thumbnail, with no thumbnail generation anywhere in the upload pipeline.
+
+**Decision:** Fixed the cheap, real, zero-risk items: added
+`@@index([organizationId, assignedTechnicianId])` to `Job`
+(`DATABASE.md` §5), and added `take: 100` to the three unbounded queries.
+Deliberately did **not** build thumbnail generation or a batched-presign
+endpoint for the frontend photo grid — logged as `OPEN_QUESTIONS.md` #19
+instead.
+
+**Why:** The index and `take` fixes are unambiguous wins with no
+downside — exactly the "meaningful bottleneck" bar the brief set.
+Thumbnail generation is a different category: it means running an image-
+processing step (e.g. `sharp`) synchronously or via a job queue on
+upload, storing a second object per photo, and picking a real "viewed"
+size — that's new infrastructure, not a bottleneck fix, and at pilot
+scale (a handful of garages, a handful of photos per job) the actual
+bytes wasted are small. Building it now, before knowing whether photo
+volume ever gets large enough to matter, is exactly the premature
+feature work the brief's own philosophy (§29) warns against.

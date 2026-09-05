@@ -99,6 +99,7 @@ export class FilesService {
     return this.prisma.client.attachment.findMany({
       where: { organizationId, ...this.entityForeignKey(entityType, entityId) },
       orderBy: { createdAt: "desc" },
+      take: 100,
     });
   }
 

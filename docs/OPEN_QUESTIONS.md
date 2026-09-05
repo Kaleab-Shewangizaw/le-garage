@@ -114,6 +114,18 @@ would make us revisit it.
     "targeted, not blanket" approach. Revisit if pilot usage (or abuse)
     shows a different route needs it; don't add it speculatively
     everywhere first.
+19. **Photo attachments have no thumbnail — the job-detail photo grid
+    downloads full-resolution images to render small tiles.** Assumption
+    (`DECISIONS.md` ADR-0019): not worth building an image-processing/
+    thumbnail pipeline before knowing real pilot photo volume; a real
+    but small waste of mobile bandwidth at today's scale (a handful of
+    photos per job). Revisit — likely via `sharp` on upload, storing a
+    second small object per photo — if pilot usage shows photo-heavy
+    jobs (e.g. many high-res damage photos) making this a real
+    complaint, not a theoretical one. The related per-attachment presign
+    fanout (one `/files/:id/url` call per visible photo, not batched)
+    has the same "real but small, not worth new API surface yet"
+    status.
 
 Add new entries here rather than leaving an assumption undocumented
 in code or chat.

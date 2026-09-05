@@ -318,6 +318,7 @@ model Job {
   @@index([organizationId, status])
   @@index([organizationId, vehicleId])
   @@index([organizationId, customerId])
+  @@index([organizationId, assignedTechnicianId])
 }
 
 model JobStatusEvent {

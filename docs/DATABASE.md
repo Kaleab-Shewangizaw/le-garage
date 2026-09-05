@@ -111,8 +111,12 @@ is the source of truth for history. Transitions are validated in the
 `jobs` service against the fixed transition table in `DOMAIN.md` §5 —
 **never** by a raw `UPDATE ... SET status`.
 
-Index: `@@index([organizationId, status])` — this is the query the garage
-dashboard runs constantly ("show me all jobs in X status").
+Indexes: `@@index([organizationId, status])` — the query the garage
+dashboard runs constantly ("show me all jobs in X status"); `@@index([organizationId, vehicleId])` and `@@index([organizationId, customerId])`
+for vehicle/customer history lookups; `@@index([organizationId, assignedTechnicianId])`
+(added in the pilot-hardening performance pass, `DECISIONS.md` ADR-0019) for
+the "my assigned jobs" technician view (`jobs.service.ts`'s `list`), which
+filtered on this column with no covering index until then.
 
 `JobNote` is a second, separate append-only child of `Job` — freeform
 technician/staff notes (`DOMAIN.md` §3), distinct from `JobStatusEvent`

@@ -107,6 +107,7 @@ export class VehiclesService {
     return this.prisma.client.job.findMany({
       where: { organizationId, vehicleId },
       orderBy: { intakeAt: "desc" },
+      take: 100,
     });
   }
 
@@ -122,6 +123,7 @@ export class VehiclesService {
     return this.prisma.client.serviceRecord.findMany({
       where: { organizationId, vehicleId },
       orderBy: { serviceDate: "desc" },
+      take: 100,
     });
   }
 }
