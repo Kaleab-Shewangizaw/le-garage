@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea, Label } from "@/components/ui/input";
 import { useTransitionJobStatus } from "@/hooks/use-jobs";
+import { useIdempotencyKey } from "@/hooks/use-idempotency-key";
 import { humanizeApiError } from "@/lib/api-error";
 
 const SUCCESS_COPY: Partial<Record<string, string>> = {
@@ -26,7 +27,8 @@ const SUCCESS_COPY: Partial<Record<string, string>> = {
 
 export function StatusActionBar({ job }: { job: Job }) {
   const actions = JOB_NEXT_ACTIONS[job.status];
-  const transition = useTransitionJobStatus(job.id);
+  const idempotency = useIdempotencyKey();
+  const transition = useTransitionJobStatus(job.id, idempotency.key);
   const [confirmAction, setConfirmAction] = useState<JobNextAction | null>(null);
   const [note, setNote] = useState("");
 
@@ -47,6 +49,11 @@ export function StatusActionBar({ job }: { job: Job }) {
       setNote("");
     } catch (err) {
       toast.error("Couldn't update the job", { description: humanizeApiError(err) });
+    } finally {
+      // A fresh key per logical attempt: a same-tick double-click/retry
+      // shares this key (deduped server-side), but the *next* deliberate
+      // transition — success or failure — must not collide with this one.
+      idempotency.rotate();
     }
   }
 

@@ -76,10 +76,10 @@ export function useCreateJob(idempotencyKey?: string) {
   });
 }
 
-export function useTransitionJobStatus(jobId: string) {
+export function useTransitionJobStatus(jobId: string, idempotencyKey?: string) {
   const invalidate = useInvalidateJob(jobId);
   return useMutation({
-    mutationFn: (input: UpdateJobStatusInput) => api.patch<Job>(`/jobs/${jobId}/status`, input),
+    mutationFn: (input: UpdateJobStatusInput) => api.patch<Job>(`/jobs/${jobId}/status`, input, idempotencyKey),
     onSuccess: invalidate,
   });
 }

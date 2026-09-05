@@ -361,6 +361,17 @@ second datastore's failure modes to reason about. Revisit if idempotency
 records need a TTL/sweep at real volume — none exists yet, see
 `OPEN_QUESTIONS.md`.
 
+**Update (pilot-hardening browser walkthrough):** a full end-to-end
+Playwright run through the whole job lifecycle surfaced that
+`useTransitionJobStatus` — unlike `useCreateJob` and `useRecordPayment` —
+never actually sent an `Idempotency-Key`, even though the server-side
+route was already wrapped in `@Idempotent()`. A same-tick double-click on
+a status button (e.g. "Mark ready for pickup" on a slow connection) hit
+the concurrency guard's raw `JOB_CONCURRENTLY_MODIFIED` 409 instead of
+being silently deduped — the safety net existed but wasn't wired up at
+this specific call site. Fixed by threading a `useIdempotencyKey()`
+through `StatusActionBar`, matching the existing pattern.
+
 ---
 
 ### ADR-0016: Realtime events piggyback on `AuditService.record`, not a gateway call in every service
