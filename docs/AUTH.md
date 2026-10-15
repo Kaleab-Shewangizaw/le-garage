@@ -103,14 +103,30 @@ the client sent or omitted.
   `DATABASE.md` §1) — not a substitute for authorization checks, but removes
   trivial enumeration as an attack vector.
 
-## 7. Owner-app auth (Phase 10, specified now so the model doesn't block it)
+## 7. Owner-app auth (Phase 10 — built, see `OWNER-APP.md` §4)
 
-Phone-number-first (matches Ethiopian market norms, `ETHIOPIA.md`), OTP via
-SMS for verification, same `User`/JWT infrastructure. Linking an owner
-identity to existing garage-created `Customer` records happens by matched
-phone number, with the match surfaced for confirmation rather than
-auto-merged silently (a garage could have a typo'd or reused phone number on
-file) — exact UX deferred to Phase 10 design.
+A **second, independent authentication track** under `/owner/auth/*`,
+not an extension of staff `/auth` (which hard-requires an active
+`StaffMember` row). Shares the `User` table and argon2 hashing, but:
+
+- Phone-or-email + **password** (not phone+OTP as originally specified
+  here — OTP needs an SMS provider integration not justified for this
+  pass; password auth reuses infrastructure the staff side already has,
+  `OPEN_QUESTIONS.md` #23).
+- `RefreshToken.kind` (`STAFF`/`OWNER`) distinguishes session types — the
+  same `User` can hold both, since the same person can work at a garage
+  and separately own a car serviced elsewhere.
+- Owner access tokens are signed with `JWT_OWNER_ACCESS_SECRET`, a
+  different secret than staff's `JWT_ACCESS_SECRET`, verified by a
+  separate `OwnerJwtAuthGuard` — a staff token cannot authenticate an
+  owner route or vice versa, cryptographically, not just by convention
+  (`DECISIONS.md` ADR-0020).
+
+Linking an owner identity to existing garage-created `Customer` records
+happens by matched phone number, surfaced for confirmation rather than
+auto-merged silently (a garage could have a typo'd or reused phone number
+on file) — the confirm step re-verifies the phone match server-side
+before creating the `CustomerLink`. Full flow in `OWNER-APP.md` §5.
 
 ## 8. Admin auth
 

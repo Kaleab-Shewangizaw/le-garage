@@ -487,3 +487,70 @@ scale (a handful of garages, a handful of photos per job) the actual
 bytes wasted are small. Building it now, before knowing whether photo
 volume ever gets large enough to matter, is exactly the premature
 feature work the brief's own philosophy (§29) warns against.
+
+---
+
+### ADR-0020: Owner-mobile is a second, independent authentication track — not an extension of staff auth
+
+**Status:** Accepted
+
+**Context:** Phase 10 (`OWNER-APP.md`) needs a vehicle owner to log in
+from `apps/owner-mobile`. The existing `/auth` surface hard-requires an
+active `StaffMember` row (`AuthService.login` throws
+`NO_ACTIVE_STAFF_MEMBERSHIP` otherwise) — a pure vehicle-owner account has
+none, so that endpoint was never usable for this. The question was
+whether to generalize staff auth to cover both cases, or build a parallel
+track.
+
+**Decision:** A second, fully independent authentication track under
+`/owner/auth/*` (`OwnerAuthController`/`OwnerAuthService`), sharing only
+the underlying `User` table, argon2 hashing, and `RefreshToken`
+rotation/reuse-detection machinery (`TokenService`, extended rather than
+duplicated) — never the staff login endpoint itself. Concretely:
+
+- A new `TokenKind` enum (`STAFF` | `OWNER`) on `RefreshToken`. Kind is a
+  property of the *session*, not the user — the same person can hold a
+  staff session (garage-web) and an owner session (owner-mobile)
+  simultaneously with the same account, since nothing stops a mechanic
+  from also owning a personal car serviced elsewhere. Rotation preserves
+  whichever kind a session was issued as.
+- `OwnerAccessTokenPayload` (`@le-garage/types`) is a deliberately
+  minimal, separate shape from `AccessTokenPayload` — `{sub, jti}` only,
+  no organizationId/garageId/role, since an owner isn't scoped to one
+  tenant.
+- Owner access tokens are signed with a **different secret**
+  (`JWT_OWNER_ACCESS_SECRET`, distinct from `JWT_ACCESS_SECRET`), verified
+  by a separate `OwnerJwtAuthGuard` applied per-route (owner controllers
+  are `@Public()` to skip the global staff `JwtAuthGuard`, then apply
+  `OwnerJwtAuthGuard` explicitly — the same pattern already established
+  for the public estimate-share controller).
+- `OwnerAccessService` is the single chokepoint every owner-facing
+  service uses to verify a request's owner actually has a confirmed
+  `CustomerLink` to the resource in question, using
+  `prisma.unscopedClient` since an owner's data legitimately spans
+  multiple organizations — the one legitimate exception to `SECURITY.md`
+  §2's tenant-scoping rule, and the only place in the codebase where that
+  exception is allowed.
+
+**Why:** Generalizing the staff login endpoint to also accept owner
+identities would have meant threading an "or it's an owner" branch
+through code that `SECURITY.md`/`AUTH.md` already treat as the hardened,
+tested core of the tenant-isolation model — real risk for a feature that
+doesn't need to touch it at all. A separate secret is cheap (one more
+environment variable) and turns "the two token kinds must never be
+confused" from a code-review convention into something cryptographically
+true: a staff token literally fails signature verification against the
+owner secret, and vice versa — verified directly in
+`test/owner-app.e2e-spec.ts`, not just asserted in review.
+
+**A related fix surfaced along the way:** `jobs.service.ts`'s
+`createIntake` never passed the resolved customer as a new vehicle's
+owner (`VehicleOwnerHistory` requires an explicit `ownerCustomerId` that
+garage-web's intake form never sent), so `VehicleOwnerHistory` — which
+"my vehicles" depends on entirely — was empty for nearly every vehicle in
+the system. `resolveVehicle` now defaults a new vehicle's owner to its
+own job's customer unless a different owner is explicitly given, which is
+true for the overwhelming majority of real intakes (the person dropping
+the car off is its owner) and doesn't change behavior for the standalone
+vehicle-creation endpoint, which already threads an explicit
+`ownerCustomerId` when the caller provides one.

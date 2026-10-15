@@ -18,7 +18,15 @@ export default function SettingsPage() {
   const [form, setForm] = useState({ name: "", phone: "", address: "", city: "" });
 
   useEffect(() => {
+    // Syncing fetched data into editable form state genuinely needs an
+    // effect here (the form must exist and be user-editable before
+    // submit, not derived fresh on every render) — the alternative is
+    // hoisting a keyed child component so a lazy useState initializer can
+    // read `garage.data` at mount instead, which is a real restructure
+    // not worth the risk on an already-working, previously-verified page
+    // for a lint rule.
     if (garage.data) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setForm({
         name: garage.data.name,
         phone: garage.data.phone ?? "",

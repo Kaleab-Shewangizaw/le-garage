@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { WifiOff } from "lucide-react";
+
+function subscribe(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
 
 /**
  * A poor Ethiopian mobile connection dropping mid-workflow should never
@@ -9,21 +18,19 @@ import { WifiOff } from "lucide-react";
  * first, cheapest thing that helps is just telling the user plainly that
  * they're offline, rather than letting requests silently fail. Mutations
  * still surface their own errors via toast; this is the ambient signal.
+ *
+ * `useSyncExternalStore` (not useState+useEffect) is the correct primitive
+ * for reading browser-owned mutable state like `navigator.onLine` — it
+ * reads the current value directly rather than syncing it into state via
+ * an effect, and the SSR snapshot avoids a `navigator` reference during
+ * server rendering.
  */
 export function ConnectionBanner() {
-  const [online, setOnline] = useState(true);
-
-  useEffect(() => {
-    setOnline(navigator.onLine);
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
+  const online = useSyncExternalStore(
+    subscribe,
+    () => navigator.onLine,
+    () => true,
+  );
 
   if (online) return null;
 

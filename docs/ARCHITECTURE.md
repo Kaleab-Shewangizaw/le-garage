@@ -150,15 +150,17 @@ support — there is no local write queue or background sync in garage-web;
 a request made while offline simply fails visibly and can be retried once
 the banner clears.
 
-**Owner mobile (Phase 10, not yet built):** targets the specific
-workflows that actually need resilience to flaky connectivity (viewing
-already-fetched vehicle/job data, queuing an approval action). See
-`ROADMAP.md` for the offline approach when Phase 10 starts: local cache
-via a lightweight store (e.g. MMKV/SQLite), a small outbox queue for write
-actions (approve/reject), and the same `Idempotency-Key` mechanism
-already running server-side so a retried queued write can't double apply.
-Garage-side intake photo capture already uses presigned direct-to-storage
-uploads (`SECURITY.md` §7) — the same pattern owner-mobile will reuse.
+**Owner mobile (Phase 10 — built, `OWNER-APP.md`):** simpler than the
+outbox-queue design originally sketched here, matching garage-web's own
+"deliberately narrower than full offline support" scope rather than
+building ahead of evidence that more is needed. TanStack Query's
+in-memory cache means already-fetched vehicle/job data stays visible
+immediately on reopening a screen even before a fresh fetch resolves; no
+local persistence store (MMKV/SQLite), no write-outbox queue, and no
+optimistic mutations — approving/rejecting an estimate only updates what
+the owner sees once the server has actually confirmed it
+(`OWNER-APP.md` §12). Revisit if pilot usage with real owners on
+real Ethiopian mobile networks shows this isn't enough.
 
 ## 8. Deployment topology (MVP)
 

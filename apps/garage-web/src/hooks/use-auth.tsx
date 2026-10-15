@@ -36,6 +36,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    // `react-hooks/refs`-adjacent lint note: `useSyncExternalStore` would
+    // be the textbook fit for syncing from `tokenStore`, but `getUser()`
+    // decodes a fresh object on every call rather than returning a cached
+    // snapshot reference — useSyncExternalStore requires a stable
+    // reference when nothing changed, or it re-renders in a loop. Fixing
+    // that means adding memoization to tokenStore itself; not worth the
+    // risk to already-verified auth bootstrapping for a lint rule.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setUser(tokenStore.getUser());
     setHydrated(true);
     return tokenStore.subscribe(() => setUser(tokenStore.getUser()));

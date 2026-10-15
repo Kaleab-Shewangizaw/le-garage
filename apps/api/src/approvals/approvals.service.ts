@@ -31,7 +31,14 @@ export class ApprovalsService {
    * is what makes the record trustworthy: the estimate that was approved
    * cannot change after the fact (docs/SECURITY.md §3).
    */
-  async create(organizationId: string, estimateId: string, actorStaffId: string, actorUserId: string, input: CreateApprovalInput) {
+  async create(
+    organizationId: string,
+    estimateId: string,
+    actorStaffId: string | null,
+    actorUserId: string,
+    input: CreateApprovalInput,
+    decidedByCustomerId?: string,
+  ) {
     const estimate = await this.prisma.client.estimate.findFirst({
       where: { id: estimateId, organizationId },
       include: { items: true },
@@ -65,6 +72,7 @@ export class ApprovalsService {
           method: input.method,
           note: input.note,
           loggedByStaffId: input.method === "IN_APP" ? null : actorStaffId,
+          decidedByCustomerId: decidedByCustomerId ?? null,
         },
       });
 
