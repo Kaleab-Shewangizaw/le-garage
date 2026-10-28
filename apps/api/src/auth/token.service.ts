@@ -2,7 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
-import type { AccessTokenPayload } from "@le-garage/types";
+import { TokenKind } from "@le-garage/database";
+import type { AccessTokenPayload, OwnerAccessTokenPayload } from "@le-garage/types";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
 import { AuditService } from "../audit/audit.service";
@@ -13,6 +14,10 @@ export interface StaffContext {
   garageId: string;
   staffMemberId: string;
   role: string;
+}
+
+export interface OwnerContext {
+  userId: string;
 }
 
 export interface TokenPair {
@@ -49,23 +54,83 @@ export class TokenService {
       expiresIn: process.env.JWT_ACCESS_TTL ?? "15m",
     });
 
-    const rawRefreshToken = randomUUID() + randomUUID();
-    const tokenHash = this.hash(rawRefreshToken);
-    const expiresAt = new Date(Date.now() + this.parseTtlMs(process.env.JWT_REFRESH_TTL ?? "30d"));
+    const refreshToken = await this.createRefreshToken(ctx.userId, TokenKind.STAFF, familyId);
+    return { accessToken, refreshToken };
+  }
 
-    await this.prisma.client.refreshToken.create({
-      data: {
-        userId: ctx.userId,
-        tokenHash,
-        familyId,
-        expiresAt,
-      },
+  /**
+   * Owner-mobile sessions (docs/DECISIONS.md ADR-0020): signed with a
+   * *different* secret than staff tokens, and carrying no
+   * organizationId/garageId/role at all — an owner isn't scoped to one
+   * tenant, they're scoped to whichever Customer records they've linked
+   * (CustomerLink), checked per-request by owner services.
+   */
+  async issueOwnerTokenPair(ctx: OwnerContext, familyId: string = randomUUID()): Promise<TokenPair> {
+    const payload: Omit<OwnerAccessTokenPayload, "iat" | "exp"> = {
+      sub: ctx.userId,
+      jti: randomUUID(),
+    };
+
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: this.ownerSecret(),
+      expiresIn: process.env.JWT_ACCESS_TTL ?? "15m",
     });
 
-    return { accessToken, refreshToken: `${familyId}.${rawRefreshToken}` };
+    const refreshToken = await this.createRefreshToken(ctx.userId, TokenKind.OWNER, familyId);
+    return { accessToken, refreshToken };
   }
 
   async rotateRefreshToken(presented: string): Promise<{ ctx: StaffContext; tokens: TokenPair }> {
+    const stored = await this.validateAndConsumeRefreshToken(presented);
+    if (stored.kind !== TokenKind.STAFF) {
+      throw AppError.unauthorized("INVALID_REFRESH_TOKEN", "Not a staff session");
+    }
+
+    // Bootstrapping which tenant this refresh token's user belongs to —
+    // legitimately unscoped, see @le-garage/database's prismaUnscoped doc comment.
+    const staffMember = await this.prisma.unscopedClient.staffMember.findFirst({
+      where: { userId: stored.userId, active: true },
+    });
+    if (!staffMember) {
+      throw AppError.unauthorized("NO_ACTIVE_STAFF_MEMBERSHIP", "No active staff membership for this user");
+    }
+
+    const ctx: StaffContext = {
+      userId: staffMember.userId,
+      organizationId: staffMember.organizationId,
+      garageId: staffMember.garageId,
+      staffMemberId: staffMember.id,
+      role: staffMember.role,
+    };
+
+    const tokens = await this.issueTokenPair(ctx, stored.familyId);
+    return { ctx, tokens };
+  }
+
+  async rotateOwnerRefreshToken(presented: string): Promise<{ ctx: OwnerContext; tokens: TokenPair }> {
+    const stored = await this.validateAndConsumeRefreshToken(presented);
+    if (stored.kind !== TokenKind.OWNER) {
+      throw AppError.unauthorized("INVALID_REFRESH_TOKEN", "Not an owner session");
+    }
+
+    const user = await this.prisma.unscopedClient.user.findUnique({ where: { id: stored.userId } });
+    if (!user) {
+      throw AppError.unauthorized("INVALID_REFRESH_TOKEN", "Unknown user");
+    }
+
+    const ctx: OwnerContext = { userId: user.id };
+    const tokens = await this.issueOwnerTokenPair(ctx, stored.familyId);
+    return { ctx, tokens };
+  }
+
+  /**
+   * Shared validation for both rotation paths: check the token exists, is
+   * unexpired/unrevoked (with reuse-detection on the whole family), then
+   * revoke it (rotation is always one-shot — the caller issues a
+   * replacement). Returns the stored row so the caller can branch on
+   * `kind` and mint the right session type.
+   */
+  private async validateAndConsumeRefreshToken(presented: string) {
     const [familyId, rawToken] = presented.split(".");
     if (!familyId || !rawToken) {
       throw AppError.unauthorized("INVALID_REFRESH_TOKEN", "Malformed refresh token");
@@ -105,30 +170,32 @@ export class TokenService {
       );
     }
 
-    // Bootstrapping which tenant this refresh token's user belongs to —
-    // legitimately unscoped, see @le-garage/database's prismaUnscoped doc comment.
-    const staffMember = await this.prisma.unscopedClient.staffMember.findFirst({
-      where: { userId: stored.userId, active: true },
-    });
-    if (!staffMember) {
-      throw AppError.unauthorized("NO_ACTIVE_STAFF_MEMBERSHIP", "No active staff membership for this user");
-    }
-
     await this.prisma.client.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
     });
 
-    const ctx: StaffContext = {
-      userId: staffMember.userId,
-      organizationId: staffMember.organizationId,
-      garageId: staffMember.garageId,
-      staffMemberId: staffMember.id,
-      role: staffMember.role,
-    };
+    return stored;
+  }
 
-    const tokens = await this.issueTokenPair(ctx, familyId);
-    return { ctx, tokens };
+  private async createRefreshToken(userId: string, kind: TokenKind, familyId: string): Promise<string> {
+    const rawRefreshToken = randomUUID() + randomUUID();
+    const tokenHash = this.hash(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + this.parseTtlMs(process.env.JWT_REFRESH_TTL ?? "30d"));
+
+    await this.prisma.client.refreshToken.create({
+      data: { userId, kind, tokenHash, familyId, expiresAt },
+    });
+
+    return `${familyId}.${rawRefreshToken}`;
+  }
+
+  private ownerSecret(): string {
+    const secret = process.env.JWT_OWNER_ACCESS_SECRET;
+    if (!secret) {
+      throw new Error("JWT_OWNER_ACCESS_SECRET is not configured");
+    }
+    return secret;
   }
 
   async revokeFamily(presented: string): Promise<void> {

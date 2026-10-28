@@ -18,8 +18,8 @@ end-to-end.
 | 7 | Parts + labor | **Done** — job-scoped, locked once invoiced |
 | 8 | Invoices + payments | **Done** — versioned invoices generated from actual parts/labor, payments with balance tracking |
 | 9 | Service history | **Done** — auto-written on COLLECTED, job auto-closes |
-| 10 | Owner app | Not started (deliberately after the pilot — brief §25) |
-| 11 | Notifications | Not started |
+| 10 | Owner app | **Done** — built ahead of the pilot on explicit direction, not per the originally-planned after-pilot sequencing (`MVP.md` §4). See `OWNER-APP.md`. |
+| 11 | Notifications | **Foundation done** — in-app records only, no real push delivery. See `OWNER-APP.md` §9. |
 | 12 | Hardening + testing + deployment | **Core pass done** — see below |
 | — | Garage Web (`apps/garage-web`) | **Core loop + files/realtime/print/share done** — see below |
 
@@ -53,8 +53,33 @@ search endpoints already return most-recent-first on an empty query), an
 offline/connection-state banner, and two real mobile-layout bugs found and
 fixed by an actual 375px-viewport audit (`UX.md` §6).
 
-Not yet built: a dedicated admin web app; owner-mobile (Phase 10,
-deliberately deferred).
+Not yet built: a dedicated admin web app.
+
+### Owner Mobile status (Phase 10)
+
+Built and verified against the real running API — not mocked — via a
+full Expo web export walked through end to end in a real browser:
+register → phone-matched garage-record linking (confirm step) → Home
+(active repair prominently, vehicles list, quick actions) → job/repair
+detail (plain-language status, 6-stage progress timeline, diagnosis) →
+estimate review with per-item approve/reject → the approved state
+correctly reflected back on the job (a real staleness bug — the owner's
+own decision landing before staff transitions the job status — was found
+this way and fixed, `OWNER-APP.md` §7) → Vehicles tab → vehicle detail →
+Service history (real empty state, since no jobs have been collected on
+the seed data) → Profile (linked garages, sign-out, disabled "coming
+soon" emergency placeholder). Zero console/page errors across the full
+walkthrough. See `OWNER-APP.md` for the full design and
+`test/owner-app.e2e-spec.ts` for the backend security-boundary tests
+(cross-owner isolation by id, staff/owner token cross-use, phone-mismatch
+link rejection, refresh-token rotation).
+
+No physical device or simulator was available in this environment — the
+web export renders the same React Native component tree Metro would
+bundle for iOS/Android, so this verifies the actual code, not a
+facsimile, but real-device gesture/haptic/native-navigation feel has not
+been hand-tested. That belongs in the first pilot session with a real
+owner, alongside the garage-side pilot (`PILOT.md`).
 
 ## Phase 12: Hardening — what's done, what's tracked elsewhere
 

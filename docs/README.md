@@ -23,6 +23,7 @@ update the relevant doc in the same change, not after.
 14. [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md) — unresolved questions and assumptions made to unblock work
 15. [PILOT.md](./PILOT.md) — how Le Garage gets tested with real garages
 16. [PILOT-FEEDBACK.md](./PILOT-FEEDBACK.md) — the running log from pilot sessions
+17. [OWNER-APP.md](./OWNER-APP.md) — the vehicle-owner mobile app: design, auth, linking, approval flow
 
 ## How to use this documentation
 
@@ -43,7 +44,17 @@ complete garage workflow end-to-end — intake through service history —
 verified against a real database and a real browser, not mocks. A
 pilot-readiness hardening pass (security audit, file uploads, realtime
 updates, financial/concurrency correctness, mobile UX audit, a customer
-estimate share link, backup/recovery drill) is complete; see
-`ROADMAP.md` for exactly what's done and `PILOT.md` for how the actual
-pilot with real garages runs next. Phase 10 (owner app) is deliberately
-not started yet — see `PRODUCT.md`/`ROADMAP.md` for why.
+estimate share link, backup/recovery drill) is complete.
+
+Phase 10, the owner app (`apps/owner-mobile`), is now also built — ahead
+of the pilot, on explicit direction, not the after-pilot sequencing
+originally planned (`MVP.md` §4 explains the tradeoff). It covers
+registration, phone-matched linking to garage records, vehicles, active
+repairs with a plain-language progress timeline, itemized estimate
+review and per-item approve/reject, service history, and an in-app
+notification foundation. See `OWNER-APP.md` for the full design and what
+it deliberately excludes.
+
+The actual pilot with 3–5 real garages (`PILOT.md`) has not run yet —
+that remains the next real validation step for the whole product, garage
+side and owner side both.

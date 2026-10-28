@@ -19,13 +19,28 @@ export {
   Currency,
 } from "@le-garage/database";
 
-/** Decoded JWT access token payload, shared shape between issuer and any verifier. */
+/** Decoded JWT access token payload for a garage-staff session (garage-web). */
 export interface AccessTokenPayload {
   sub: string; // userId
   organizationId: string;
   garageId: string;
   staffMemberId: string;
   role: string;
+  jti: string;
+  iat?: number;
+  exp?: number;
+}
+
+/**
+ * Decoded JWT access token payload for a vehicle-owner session
+ * (owner-mobile). Deliberately has no organizationId/garageId/role: an
+ * owner isn't scoped to one tenant, and is signed with a *different*
+ * secret than AccessTokenPayload (docs/DECISIONS.md ADR-0020) so the two
+ * token kinds can never be confused for one another, not even by a guard
+ * bug — see OwnerJwtAuthGuard vs. JwtAuthGuard.
+ */
+export interface OwnerAccessTokenPayload {
+  sub: string; // userId
   jti: string;
   iat?: number;
   exp?: number;

@@ -38,8 +38,11 @@ pnpm db:seed          # demo organization/garage/staff/customer/vehicle
 ```
 
 Seeded logins (see `packages/database/prisma/seed.ts`):
-- `owner@legarage.dev` / `password123` (OWNER)
-- `tech@legarage.dev` / `password123` (TECHNICIAN)
+- `owner@legarage.dev` / `password123` (garage OWNER role, garage-web)
+- `tech@legarage.dev` / `password123` (TECHNICIAN, garage-web)
+- `driver@legarage.dev` / `password123` (vehicle owner, owner-mobile —
+  pre-linked to the seeded vehicle, with one demo job already in
+  `WAITING_APPROVAL` so there's something real to see on first login)
 
 **Object storage (photo/document uploads):** the API creates its MinIO
 bucket (`legarage-attachments` by default) automatically on startup if it
@@ -124,6 +127,49 @@ styling — extend the existing primitives so the app stays visually
 consistent. See `docs/DECISIONS.md` ADR-0013 for the reasoning behind the
 stack and design choices.
 
+## Running Owner Mobile
+
+```bash
+pnpm --filter @le-garage/owner-mobile start   # Expo dev server — press i/a/w for iOS/Android/web
+```
+
+Requires the API running (above) and `@le-garage/types`/
+`@le-garage/validation` built, same reasoning as Garage Web. The API URL
+is read from `app.json`'s `extra.apiUrl` (defaults to
+`http://localhost:4000/api/v1`); override per-run with
+`EXPO_PUBLIC_API_URL` if needed (e.g. a physical device needs your
+machine's real LAN IP, not `localhost` — see `src/lib/config.ts`, which
+also handles the Android-emulator-specific `10.0.2.2` alias
+automatically).
+
+Sign in with the seeded demo owner login (`driver@legarage.dev` /
+`password123`, pre-linked to the seeded vehicle) or register a new
+account and use "Find my garage records" to link by phone — see
+`OWNER-APP.md` §5.
+
+**A note on this environment specifically:** `expo start`'s file watcher
+can hit `ENOSPC: System limit for number of file watchers reached` on
+Linux hosts with a low `fs.inotify.max_user_watches` (raising it needs
+root). If that happens, use a one-shot static export instead of the
+watching dev server — this is what was used to verify the app during
+development:
+
+```bash
+EXPO_PUBLIC_API_URL=http://localhost:4000/api/v1 npx expo export -p web --output-dir dist-web
+cd dist-web && python3 -m http.server 8081
+```
+
+This serves a real bundle of the actual app (same component tree Metro
+would ship to iOS/Android), just without hot reload — rebuild after
+each change. A proper static host would also need SPA-fallback routing
+(any path → `index.html`) for direct navigation to work; `python3 -m
+http.server` doesn't do this, so navigate from `/` via the app's own
+links when testing this way rather than opening a deep link directly.
+
+Design tokens: `src/theme/tokens.ts` — intentionally the same palette and
+type scale as Garage Web's `tailwind.config.ts`, since React Native has
+no shared-CSS mechanism between the two apps (`OWNER-APP.md` §11).
+
 ## Running tests
 
 ```bash
@@ -146,7 +192,11 @@ pilot-hardening pass specifically: concurrent job-status races,
 and — since it uploads a real oversized file straight to MinIO to prove
 the size limit is enforced against actual bytes, not a client's claim —
 **this suite needs MinIO running** (`docker compose up -d minio`,
-already part of the standard local setup above).
+already part of the standard local setup above). `test/
+owner-app.e2e-spec.ts` covers the owner-mobile release gate: phone-
+matched linking end to end, cross-owner isolation by id for vehicles/
+jobs/estimates, staff-vs-owner token cross-use rejected in both
+directions, and owner refresh-token rotation/reuse-detection.
 
 ## Manually exercising the API
 

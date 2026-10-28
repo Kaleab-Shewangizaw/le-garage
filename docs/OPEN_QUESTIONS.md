@@ -14,10 +14,14 @@ would make us revisit it.
    via the `Organization`/`Garage` split (`DOMAIN.md` §7) but no UI/API
    supports more than one `Garage` per `Organization` yet. Revisit when a
    pilot garage actually operates multiple locations.
-3. **Owner-to-existing-Customer linking.** Assumption: matched by phone
-   number, surfaced for confirmation rather than silently auto-merged, when
-   `owner-mobile` (Phase 10) is built. Revisit at Phase 10 design time — the
-   right UX for "is this you?" isn't designed yet.
+3. **Owner-to-existing-Customer linking.** **Resolved** — `CustomerLink`
+   matches by phone number, surfaced for confirmation via
+   `GET /owner/customer-matches` (not auto-merged), and the confirm step
+   (`POST /owner/customer-links`) re-verifies the phone match
+   server-side. See `OWNER-APP.md` §5 and `DECISIONS.md` ADR-0020. A
+   garage-initiated invitation link remains a possible future addition —
+   see #22 below — if the self-serve phone-match flow doesn't work for
+   some real garage's customers.
 4. **Cross-garage vehicle identity.** Assumption: MVP scopes `Vehicle` to
    the `Organization` that first recorded it (`DATABASE.md` §4) — the same
    real car serviced at two different garages produces two `Vehicle` rows
@@ -126,6 +130,46 @@ would make us revisit it.
     fanout (one `/files/:id/url` call per visible photo, not batched)
     has the same "real but small, not worth new API surface yet"
     status.
+
+## Owner app (Phase 10)
+
+20. **Real push notification delivery doesn't exist.** `Notification`
+    rows are written (`OWNER-APP.md` §9) but every one is `IN_APP`/`SENT`
+    — there's no device-token registration and nothing calls an actual
+    push service (Expo's or otherwise). The owner app polls
+    `GET /owner/notifications` instead. Revisit once there's a real
+    reason to know delivery happened even when the app isn't open (e.g.
+    pilot feedback that owners miss time-sensitive updates like "ready
+    for pickup").
+21. **The Vehicles-tab list can show a briefly stale status badge.**
+    `GET /owner/vehicles` deliberately omits per-vehicle estimate data to
+    keep that list payload light (brief §26), so for the few minutes
+    between an owner approving an estimate and staff transitioning the
+    job status, the list badge can still read "Waiting for approval"
+    even though job detail and Home already show the correct state
+    (`resolveDisplayStatus`, `OWNER-APP.md` §7). Revisit if pilot usage
+    shows this is actually confusing rather than just briefly imprecise.
+22. **No garage-initiated invitation link exists yet** as an alternative
+    to owner self-registration + phone-matched linking
+    (`OWNER-APP.md` §5). The self-serve flow is the simplest one that
+    works with the existing backend (brief §16) and is what's built;
+    an invitation link (garage sends a secure link, owner taps to link
+    without needing to already know their own phone matches) is a
+    reasonable addition if a pilot garage's customers struggle to
+    self-link. Not built speculatively ahead of that evidence.
+23. **Password-based auth, not the originally-scoped phone+OTP**
+    (`MVP.md` §2). OTP needs an SMS provider integration not justified
+    to stand up for this pass; password auth reuses the exact same
+    argon2/`User` infrastructure the staff side already has running.
+    Revisit if pilot feedback shows owners specifically expect/prefer
+    OTP over remembering a password.
+24. **`CustomerLink` rows are never removed** — there's no "unlink this
+    garage" action once confirmed, matching how there's also no
+    "disconnect a staff member's own account" flow on the garage side.
+    Low risk (a link only grants read/approve access to that owner's own
+    linked customer, never anyone else's), but worth a real UI affordance
+    if a pilot owner ever links the wrong record by mistake and needs to
+    undo it themselves rather than asking for manual intervention.
 
 Add new entries here rather than leaving an assumption undocumented
 in code or chat.

@@ -160,11 +160,15 @@ records, and comeback/dispute history — not from subjective ratings alone.
 condition, damage, completed work) to a job, and share a read-only,
 no-login-required link to any sent estimate — the customer sees the exact
 itemized breakdown staff see, on their own phone, over whatever channel
-they already use (WhatsApp/Telegram/SMS, `ETHIOPIA.md` §3). Approval
-itself is still staff-logged in this phase (most customers won't have an
-owner account yet, `AUTH.md` §7) — the share link is the trust-building
-half of the loop; the Owner App (Phase 10) is where a customer approves
-directly.
+they already use (WhatsApp/Telegram/SMS, `ETHIOPIA.md` §3). Staff-logged
+approval (verbal/phone, `AUTH.md` §7) remains the fallback for customers
+without an owner account — but the Owner App (Phase 10, `OWNER-APP.md`)
+is now built, and an owner who links their account to their garage's
+customer record approves directly, in-app, which the system records as
+`decidedByCustomerId` on the approval — stronger evidence than a
+staff-logged verbal approval, since there's no intermediary. Both paths
+coexist; which one applies to a given customer depends only on whether
+they've linked an owner account yet.
 
 ## 11. Roadside assistance & Vehicle Assistant
 

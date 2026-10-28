@@ -116,6 +116,20 @@ tenant-isolation test suite (§2) at the behavioral level, and should be
 grep-able (`findUnique(` usage on tenant-scoped models is avoided in favor
 of a `findFirst` + `organizationId` helper) at the code level.
 
+**Owner-app isolation (Phase 10) is the same rule, applied without a
+single organizationId to key on.** An owner session has no tenant — their
+data legitimately spans multiple organizations — so every owner-facing
+service goes through `OwnerAccessService`
+(`apps/api/src/owner/owner-access.service.ts`), which resolves the
+caller's *confirmed* `CustomerLink` rows and checks the requested
+vehicle/job/estimate against them before returning anything. Same 404-not-
+403 convention as tenant isolation, for the same reason. Verified
+directly in `test/owner-app.e2e-spec.ts`: two independently-registered
+owners, one confirms a real garage link, the other is asserted to get 404
+on that owner's vehicle/job/estimate **by id** — not just an empty list,
+which would only prove the list query is scoped, not that direct access
+is blocked. See `OWNER-APP.md` §6.
+
 ## 7. File uploads
 
 - Uploads go to S3-compatible object storage via **presigned URLs** issued
@@ -158,16 +172,17 @@ monolith trust their TypeScript types and do not re-validate.
 
 ## 10. Rate limiting
 
-Applied via NestJS throttler at the gateway level for: login, refresh,
-OTP request (owner app, Phase 10), and file-upload-URL issuance. Not
-applied blanket across every read endpoint in MVP — targeted at the routes
-that are actually abuse-prone.
+Applied via NestJS throttler at the gateway level for: staff login/
+refresh, owner-app register/login/refresh (`OWNER-APP.md` §4 — not OTP,
+per `OPEN_QUESTIONS.md` #23), file-upload-URL issuance, and public
+estimate reads. Not applied blanket across every read endpoint in MVP —
+targeted at the routes that are actually abuse-prone.
 
 ## 11. What's explicitly deferred (and why that's acceptable for MVP)
 
 - Postgres Row-Level-Security as a *second* enforcement layer beneath the
-  Prisma middleware — valuable defense-in-depth, tracked in
-  `OPEN_QUESTIONS.md`, not blocking MVP because the middleware + test suite
+  Prisma Client Extension (§2) — valuable defense-in-depth, tracked in
+  `OPEN_QUESTIONS.md`, not blocking MVP because the extension + test suite
   already make tenant leakage structurally hard, and RLS adds real
   operational complexity (connection pooling with `SET LOCAL`, migration
   tooling interplay) that isn't justified before there are paying multi-

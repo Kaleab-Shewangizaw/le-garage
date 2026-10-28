@@ -33,13 +33,21 @@ WhatsApp message. Every screen is judged against that bar.
 
 ## 3. Owner-app UX rules
 
+**Implemented in Phase 10** (`apps/owner-mobile`, see `OWNER-APP.md` for
+the full design and implementation notes) — the rules below were written
+during initial planning and now describe what was actually built, not
+just intent.
+
 - Calm, modern, consumer-grade — this is a trust product, and visual
   polish is part of how trust is communicated to a first-time user.
 - Lead with **"what's happening with your car"**, not a garage directory or
-  a feature menu. The two strongest initial screens are **My Vehicle** and
-  **My Current Repair** (with a clear timeline: Received → Diagnosis →
-  Waiting for approval → Waiting for parts → Repairing → Quality check →
-  Ready → Collected).
+  a feature menu. The two strongest screens are **Home** (the active
+  repair, prominently) and **the repair detail** itself, with a
+  simplified 6-stage timeline: Received → Diagnosing → Waiting for
+  approval → Repairing → Quality check → Ready. "Repairing" deliberately
+  collapses `APPROVED`/`WAITING_PARTS`/`IN_PROGRESS` — from the owner's
+  side these all just mean "the garage is working on it"; the distinction
+  only matters internally (`OWNER-APP.md` §7).
 - Avoid automotive jargon; where technical terms are unavoidable (a
   diagnosis written by a technician), present them plainly with the
   technician's own note rather than translating/dumbing it down

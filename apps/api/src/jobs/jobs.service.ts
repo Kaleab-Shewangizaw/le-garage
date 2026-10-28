@@ -90,7 +90,7 @@ export class JobsService {
    */
   async createIntake(organizationId: string, garageId: string, actorUserId: string, input: CreateJobInput) {
     const customerId = await this.resolveCustomer(organizationId, input);
-    const vehicleId = await this.resolveVehicle(organizationId, input);
+    const vehicleId = await this.resolveVehicle(organizationId, input, customerId);
 
     const job = await this.prisma.client.job.create({
       data: {
@@ -143,7 +143,24 @@ export class JobsService {
     return created.id;
   }
 
-  private async resolveVehicle(organizationId: string, input: CreateJobInput): Promise<string> {
+  /**
+   * The `defaultOwnerCustomerId` fallback exists because the intake form
+   * (garage-web's NewJobSheet) doesn't ask "who owns this car?" as a
+   * separate question from "who brought it in?" — in the overwhelming
+   * majority of real intakes they're the same person, so a *new* vehicle
+   * created alongside this job defaults to the job's own customer as
+   * current owner (docs/OWNER-APP.md §"Owner/garage relationship"). An
+   * explicit `newVehicle.ownerCustomerId` (e.g. the standalone "add
+   * vehicle" form, where a garage might register a car for someone other
+   * than who's standing at the counter) always wins. Without this,
+   * VehicleOwnerHistory stayed empty for nearly every vehicle in the
+   * system, which is what the owner app's "my vehicles" query depends on.
+   */
+  private async resolveVehicle(
+    organizationId: string,
+    input: CreateJobInput,
+    defaultOwnerCustomerId: string,
+  ): Promise<string> {
     if (input.vehicleId) {
       const vehicle = await this.prisma.client.vehicle.findFirst({
         where: { id: input.vehicleId, organizationId, deletedAt: null },
@@ -155,11 +172,9 @@ export class JobsService {
     const created = await this.prisma.client.vehicle.create({
       data: { organizationId, ...vehicleData },
     });
-    if (ownerCustomerId) {
-      await this.prisma.client.vehicleOwnerHistory.create({
-        data: { vehicleId: created.id, customerId: ownerCustomerId },
-      });
-    }
+    await this.prisma.client.vehicleOwnerHistory.create({
+      data: { vehicleId: created.id, customerId: ownerCustomerId ?? defaultOwnerCustomerId },
+    });
     return created.id;
   }
 

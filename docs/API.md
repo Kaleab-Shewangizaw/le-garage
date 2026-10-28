@@ -199,6 +199,43 @@ request by. Rate-limited (30/min) against enumeration attempts.
 GET    /api/v1/dashboard/summary       counts by status, outstanding balance, today's activity
 ```
 
+### `owner` — vehicle-owner (owner-mobile), Phase 10 (docs/OWNER-APP.md)
+A separate route group, not staff-authenticated: every route is
+`@Public()` at the global-guard level and instead protected by
+`OwnerJwtAuthGuard`, verifying a token signed with a different secret
+than staff's (`docs/DECISIONS.md` ADR-0020). Authorization here is
+ownership/linkage (`OwnerAccessService`, checked against the caller's own
+confirmed `CustomerLink` rows), not garage RBAC — cross-owner access
+returns 404, never 403, matching the staff tenant-isolation convention.
+```
+POST   /api/v1/owner/auth/register             create an owner account
+POST   /api/v1/owner/auth/login
+POST   /api/v1/owner/auth/refresh
+POST   /api/v1/owner/auth/logout               [OwnerJwtAuthGuard]
+GET    /api/v1/owner/auth/me                   [OwnerJwtAuthGuard]
+
+GET    /api/v1/owner/customer-matches          Customer records across any org matching the caller's own phone
+GET    /api/v1/owner/customer-links            confirmed links for the caller
+POST   /api/v1/owner/customer-links            confirm a match (re-verifies the phone server-side)
+
+GET    /api/v1/owner/vehicles                  vehicles currently owned by the caller's linked customers
+GET    /api/v1/owner/vehicles/:id              + active job summary, service history
+
+GET    /api/v1/owner/jobs/:id                  full detail: diagnoses, estimates, approvals, invoices, attachments
+                                                (no raw JobPart/JobLabor — see docs/OWNER-APP.md §6)
+
+POST   /api/v1/owner/estimates/:id/decide      per-item approve/reject; reuses ApprovalsService.create verbatim
+
+GET    /api/v1/owner/attachments/:id/url       presigned read URL, ownership-checked
+
+GET    /api/v1/owner/notifications
+POST   /api/v1/owner/notifications/:id/read
+POST   /api/v1/owner/notifications/read-all
+```
+All `/owner/*` routes marked `[OwnerJwtAuthGuard]` above (and every route
+not listed as unauthenticated) require an owner access token; a staff
+token fails signature verification against it outright.
+
 ### Admin (`PLATFORM_ADMIN` only, cross-tenant)
 ```
 GET    /api/v1/admin/organizations
@@ -215,6 +252,14 @@ authorization path (ownership/linkage, not garage RBAC).
 
 ## 4. What's not built yet
 
-Realtime (`Socket.IO` job-board push updates) is planned once the polling
-dashboard is in place and demonstrably needs push — not built in the first
-pass (`ARCHITECTURE.md` §4).
+Realtime (`Socket.IO` job-board/job-detail push updates) is built — see
+`ARCHITECTURE.md` §7a. What's still not built:
+
+- Real push notification delivery for owner-mobile (device-token
+  registration, an actual push-service call) — `Notification` rows are
+  written but never sent as an OS-level push (`OWNER-APP.md` §9).
+- A garage-initiated owner invitation link, as an alternative to the
+  phone-matched self-linking flow (`OWNER-APP.md` §5).
+- Owner discovery of garages ("Find a garage") and roadside assistance
+  ("My car won't move") — visible as disabled placeholders in
+  owner-mobile, no backend support.

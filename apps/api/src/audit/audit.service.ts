@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { NotificationsService } from "../notifications/notifications.service";
 
 export interface AuditEntry {
   organizationId: string | null;
@@ -31,6 +32,7 @@ export class AuditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async record(entry: AuditEntry): Promise<void> {
@@ -51,6 +53,12 @@ export class AuditService {
       if (entry.affectsBoard) {
         this.realtime.emitBoardChanged(entry.organizationId);
       }
+      await this.notifications.notifyForJobEvent({
+        organizationId: entry.organizationId,
+        jobId: entry.jobId,
+        action: entry.action,
+        afterState: entry.afterState,
+      });
     }
   }
 }

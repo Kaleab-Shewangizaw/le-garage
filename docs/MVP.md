@@ -40,17 +40,29 @@ not a specific sprint's ticket list.
 - Service history (`ServiceRecord` on job completion)
 - Basic operational dashboard (what's happening right now)
 
-### Owner (`apps/owner-mobile`) — Phase 10, scoped now, built after garage side is proven
-- Authentication (phone + OTP)
-- My vehicles
-- Vehicle details
-- Current job + repair timeline
+### Owner (`apps/owner-mobile`) — Phase 10, built (`OWNER-APP.md`)
+- Authentication — **password-based** (phone/email + password), not the
+  originally-scoped phone+OTP: OTP needs an SMS provider integration that
+  wasn't justified to stand up for this pass, and password auth already
+  matches how every staff account in the system authenticates today
+  (`DECISIONS.md` ADR-0020). Revisit if pilot feedback shows owners
+  expect OTP specifically.
+- Owner/garage linking — phone-matched, explicitly confirmed
+  (`OWNER-APP.md` §5)
+- My vehicles, vehicle detail
+- Current job + repair timeline (simplified 6-stage version, `UX.md` §3)
 - Diagnosis view
-- Estimate view + approve/reject (incl. per-item)
-- Parts/work performed view
-- Invoice + payment status view
-- Service history
-- Garage information
+- Estimate view + approve/reject, per-item
+- Invoice + payment status view — **not** a separate parts/work-performed
+  view: `EstimateItem`/`InvoiceItem` (customer-facing price only) cover
+  "what work, what it costs"; raw `JobPart`/`JobLabor` are deliberately
+  excluded from every owner-facing response since they carry the
+  garage's internal cost/supplier data (`OWNER-APP.md` §6)
+- Service history, expandable, per vehicle and aggregated
+- Garage name/phone (via job/vehicle detail) — not a standalone garage
+  profile/directory screen (see `OWNER-APP.md` §14 on "Find a garage")
+- Photo evidence view (`OWNER-APP.md` §10)
+- In-app notification foundation (no real push delivery yet, §9)
 
 ### Admin (`apps/admin-web`) — built alongside hardening, not before garage+owner core works
 - Users
@@ -95,11 +107,22 @@ duplicate-action protection, a customer estimate share link, a printable
 invoice, a real backup/restore drill, and an expanded security test suite
 covering IDOR/privilege-escalation/malformed-input cases beyond the core
 tenant-isolation suite. See `DECISIONS.md` ADR-0014 through ADR-0018 and
-`PILOT.md` for what this unlocks. Next: run the actual pilot with 3–5
-garages (`PILOT.md`), then Phase 10 (owner app) — deliberately *after*
-the pilot, not before (brief §25: the garage workflow generates the data
-the owner app will consume; building it first risks rework if the pilot
-changes the workflow).
+`PILOT.md` for what this unlocks.
+
+**Phase 10 (owner app) is now built** (`apps/owner-mobile`,
+`OWNER-APP.md`) — ahead of the pilot, on explicit direction, not per the
+sequencing this doc originally described below. The original reasoning
+still stands as a real risk (the garage workflow's actual shape, informed
+by real pilot usage, would have made a better foundation than building
+against assumptions), and is worth remembering when the first pilot
+sessions happen: some part of the owner-app design here may need to
+change once real garage/owner usage shows the workflow doesn't quite
+match what was assumed. Original note, preserved for that reason: "Phase
+10 deliberately after the pilot, not before (brief §25: the garage
+workflow generates the data the owner app will consume; building it
+first risks rework if the pilot changes the workflow)." The actual pilot
+with 3–5 garages (`PILOT.md`) has not run yet — it remains the next real
+validation step for the whole product, garage side and owner side both.
 
 ## 5. Assumptions made to keep the MVP unblocked
 
