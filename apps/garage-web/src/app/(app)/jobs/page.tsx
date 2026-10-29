@@ -11,6 +11,8 @@ import { SkeletonRows } from "@/components/ui/skeleton";
 import { NewJobSheet } from "@/components/jobs/new-job-sheet";
 import { Button } from "@/components/ui/button";
 import type { JobListItem } from "@/lib/api-types";
+import { useIsFleet } from "@/hooks/use-org";
+import { RequestServiceSheet } from "@/components/fleet/request-service-sheet";
 
 type BoardTab = "active" | "ready" | "collected" | "all";
 
@@ -35,29 +37,36 @@ export default function JobsPage() {
   const jobs = useJobs({ search: search || undefined });
 
   const filtered = useMemo(() => filterByTab(jobs.data ?? [], tab), [jobs.data, tab]);
+  const isFleet = useIsFleet();
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink">Jobs</h1>
-          <p className="mt-0.5 text-[13.5px] text-graphite">Every vehicle currently in the system.</p>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">{isFleet ? "Repairs" : "Jobs"}</h1>
+          <p className="mt-0.5 text-[13.5px] text-graphite">
+            {isFleet ? "Every service request, from inspection to back in service." : "Every vehicle currently in the system."}
+          </p>
         </div>
-        <NewJobSheet trigger={<Button>New job</Button>} />
+        {isFleet ? (
+          <RequestServiceSheet trigger={<Button>Request service</Button>} />
+        ) : (
+          <NewJobSheet trigger={<Button>New job</Button>} />
+        )}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => setTab(v as BoardTab)}>
           <TabsList>
             <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="ready">Ready for pickup</TabsTrigger>
-            <TabsTrigger value="collected">Collected</TabsTrigger>
+            <TabsTrigger value="ready">{isFleet ? "Repair complete" : "Ready for pickup"}</TabsTrigger>
+            <TabsTrigger value="collected">{isFleet ? "Back in service" : "Collected"}</TabsTrigger>
             <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-          <Input placeholder="Search plate or customer…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+          <Input placeholder={isFleet ? "Search plate or provider…" : "Search plate or customer…"} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
         </div>
       </div>
 
@@ -66,8 +75,14 @@ export default function JobsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Wrench}
-          title={search ? "No jobs match that search" : "No jobs here"}
-          description={search ? "Try a different plate or customer name." : "New jobs will show up here as vehicles come in."}
+          title={search ? `No ${isFleet ? "repairs" : "jobs"} match that search` : `No ${isFleet ? "repairs" : "jobs"} here`}
+          description={
+            search
+              ? `Try a different plate or ${isFleet ? "provider" : "customer"} name.`
+              : isFleet
+                ? "Service requests from your team will show up here."
+                : "New jobs will show up here as vehicles come in."
+          }
         />
       ) : (
         <div className="divide-y divide-line rounded-lg border border-line bg-surface">

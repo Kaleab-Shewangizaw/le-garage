@@ -29,7 +29,7 @@ export class OwnerEstimatesService {
       null,
       ownerId,
       { method: "IN_APP", note: input.note, itemDecisions: input.itemDecisions },
-      estimate.job.customerId,
+      estimate.job.customerId ?? undefined,
     );
   }
 }

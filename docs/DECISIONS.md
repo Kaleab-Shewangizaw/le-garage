@@ -554,3 +554,94 @@ true for the overwhelming majority of real intakes (the person dropping
 the car off is its owner) and doesn't change behavior for the standalone
 vehicle-creation endpoint, which already threads an explicit
 `ownerCustomerId` when the caller provides one.
+
+### ADR-0021: Fleet companies are an organization *kind* on the existing tenancy and Job workflow, not a new product stack
+
+**Context:** The product is pivoting toward companies that operate their own
+fleets (`FLEET.md`). Their core workflow — problem reported → diagnosis →
+estimate → approval → repair → QC → completion → cost recorded → history —
+is the garage Job lifecycle with the roles reversed: the organization owns
+the vehicle and the garage is an outside service provider.
+
+**Decision:**
+- Add `Organization.kind` (`GARAGE` default | `FLEET`). Fleet data uses the
+  same tables, tenant-scope guard, auth, audit log, and state machine.
+- `Job.customerId` becomes nullable (null for fleets, still required for
+  garages — enforced in `JobsService`). Fleet repairs reference an
+  org-private `ServiceProvider` instead.
+- Fleet approval is a new `ApprovalMethod.STAFF_DECISION` with
+  `Approval.decidedByStaffId`, restricted to OWNER/MANAGER, and it advances
+  the job to APPROVED itself.
+- The org's single `Garage` row stays as the fleet's workspace record,
+  because `StaffMember.garageId`, `Job.garageId`, and the JWT all depend on
+  it. Renaming/generalizing it is deferred until a second reason appears.
+- Org kind is read from the database per request, not put in the JWT, so
+  existing tokens keep working and kind can't go stale or be spoofed.
+
+**Why:** Reusing the hardened core (tenant isolation tests, versioned
+estimates/invoices, optimistic-concurrency status transitions, audit trail)
+gets a pilot-ready fleet workflow without a second implementation of the
+same lifecycle to keep secure. Providers coordinate through the fleet's own
+staff first (manager-led); a provider login can be added later by
+authorizing against `Job.serviceProviderId`, without cross-tenant job sharing.
+
+**Fixes that came with it (all org kinds):** approvals are no longer
+recordable by TECHNICIANs; moving to APPROVED requires an approval on the
+*current* estimate version; `Vehicle.vin` is unique per organization rather
+than globally (the global constraint both blocked a fleet and a garage from
+recording the same physical vehicle and leaked VIN existence across tenants);
+invoice items record whether they came from a part or labor entry.
+
+### ADR-0022: Platform admins live in an internal PLATFORM organization; the console controls access, not tenant records
+
+**Context:** `PLATFORM_ADMIN` existed only as a role, and the seed attached the
+admin to the demo garage — so an admin saw one garage's screens and was
+forbidden from most of them. Le Garage support needs to see every tenant
+and control access (pause a company, lock out a departed employee).
+
+**Decision:** Add `OrganizationKind.PLATFORM` for Le Garage's own staff, and
+`Organization.suspendedAt/suspendedReason`. A PLATFORM_ADMIN-only
+`/admin` module (docs/ADMIN.md) reads across tenants via `prismaUnscoped`,
+and its only writes are suspend/reactivate an organization and
+deactivate/reactivate a staff member — each requiring a reason and
+audit-logged. `JwtAuthGuard` now verifies the membership is active and the
+organization not suspended on every request.
+
+**Why:** Keeping admins out of customer tenants means their presence never
+shows up in a company's team list or audit trail, and tenant routes need no
+"unless admin" branches. Limiting the console to access control (no editing
+repairs/invoices) keeps every tenant's financial history attributable to
+the tenant's own people. The per-request membership check costs one
+primary-key lookup and turns both suspension and deactivation from "within
+15 minutes" into "immediately".
+
+### ADR-0023: Fleet ↔ garage collaboration via linked jobs and copied paperwork, not a shared job
+
+**Context:** Fleet companies and garages are separate tenants. A fleet needs
+to send a repair to a garage on the platform; the garage must do the work in
+its own account (its own customers, technicians, invoicing), and the fleet
+must approve and follow progress — without either reading the other's data.
+
+**Decision:** A `WorkOrder` links the fleet's Job to a Job the garage creates
+when it accepts. The garage's job is the source of truth for the work; the
+fleet keeps *copies* of what a customer would receive — findings, each
+estimate, photos (copied objects), the invoice — written by
+`WorkOrderSyncService` from audited garage events. The fleet's approval flows
+back as a `FLEET_PORTAL` approval on the garage's estimate. Status changes
+are mirrored onto the fleet's job through the normal state machine. While a
+work order is active the fleet's own editing of that repair is locked
+server-side (`HANDLED_BY_GARAGE`), and the garage can't approve on the
+fleet's behalf (`APPROVAL_BY_FLEET`). See docs/WORK-ORDERS.md.
+
+**Why not one shared job?** Every tenant-scoped query, the tenant-isolation
+suite, and both companies' reporting assume a job belongs to exactly one
+organization. Sharing a job would have meant cross-tenant reads throughout
+the codebase. Linked jobs with copies keep isolation intact (one bridging
+table, queried by a guarded "two-sided" rule), let each company's history and
+reports run entirely on its own records, and mirror how paperwork moves
+between a customer and a garage in practice.
+
+**Events, not calls:** sync hangs off `AuditService.record` through a small
+`DomainEvents` bus (no new infrastructure) — every relevant mutation already
+audits, so there's one integration point and no dependency cycle between the
+work-order code and the services it observes.

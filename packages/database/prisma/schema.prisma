@@ -23,6 +23,63 @@ enum Role {
   PLATFORM_ADMIN
 }
 
+/// What kind of business a tenant is (docs/FLEET.md). Same tenancy,
+/// auth and Job workflow either way — `kind` only changes which side of a
+/// repair the organization sits on: a GARAGE repairs other people's
+/// vehicles for Customers; a FLEET company maintains its own vehicles and
+/// coordinates external ServiceProviders. Defaults to GARAGE so every
+/// pre-existing organization keeps its behavior.
+enum OrganizationKind {
+  GARAGE
+  FLEET
+  /// Le Garage's own internal organization — the home of PLATFORM_ADMIN
+  /// staff (docs/ADMIN.md). Never created by signup; it has no customers,
+  /// vehicles, or jobs of its own.
+  PLATFORM
+}
+
+/// Operational availability of a vehicle (fleet orgs). IN_MAINTENANCE is
+/// set/cleared automatically as repairs open/close (JobsService);
+/// UNAVAILABLE and RETIRED are manual manager decisions.
+enum VehicleStatus {
+  ACTIVE
+  IN_MAINTENANCE
+  UNAVAILABLE
+  RETIRED
+}
+
+enum VehicleType {
+  CAR
+  PICKUP
+  VAN
+  TRUCK
+  MINIBUS
+  BUS
+  MOTORCYCLE
+  OTHER
+}
+
+enum FuelType {
+  DIESEL
+  PETROL
+  HYBRID
+  ELECTRIC
+  OTHER
+}
+
+/// What a photo/document is evidence of (docs/FLEET.md §"Vehicle profile").
+/// Optional — older attachments have none.
+enum AttachmentTag {
+  VEHICLE_PROFILE
+  CONDITION
+  DAMAGE
+  BEFORE_REPAIR
+  AFTER_REPAIR
+  OLD_PART
+  RECEIPT
+  DOCUMENT
+}
+
 enum Currency {
   ETB
 }
@@ -59,6 +116,14 @@ enum ApprovalMethod {
   IN_APP
   VERBAL_LOGGED_BY_STAFF
   PHONE
+  /// An authorized staff member of the organization made the decision
+  /// themselves — a fleet manager approving their own company's repair
+  /// spend. Only valid for FLEET organizations (ApprovalsService).
+  STAFF_DECISION
+  /// A fleet customer's authorized staff decided on a garage's estimate
+  /// through their own Le Garage account (docs/WORK-ORDERS.md). Written
+  /// only by WorkOrderSyncService — never accepted from a request body.
+  FLEET_PORTAL
 }
 
 enum ApprovalDecision {
@@ -99,10 +164,20 @@ enum AttachmentEntityType {
 
 enum NotificationChannel {
   PUSH
+  EMAIL
   SMS
   TELEGRAM
   WHATSAPP
   IN_APP
+}
+
+/// docs/WORK-ORDERS.md: a fleet company sending one of its repairs to a
+/// garage that is also on Le Garage.
+enum WorkOrderStatus {
+  SENT
+  ACCEPTED
+  DECLINED
+  CANCELLED
 }
 
 enum NotificationStatus {
@@ -126,7 +201,7 @@ model User {
 
   staffMemberships StaffMember[]
   refreshTokens    RefreshToken[]
-  auditLogEntries  AuditLog[]        @relation("AuditLogActor")
+  auditLogEntries  AuditLog[]     @relation("AuditLogActor")
   customerLinks    CustomerLink[]
   notifications    Notification[]
 
@@ -161,36 +236,42 @@ model RefreshToken {
 }
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String           @id @default(uuid())
+  name            String
+  /// Set by a platform admin: the org's staff can no longer sign in or use
+  /// the API until it is reactivated (docs/ADMIN.md). Data is kept intact.
+  suspendedAt     DateTime?
+  suspendedReason String?
+  kind            OrganizationKind @default(GARAGE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
-  garage    Garage?
-  customers Customer[]
-  vehicles  Vehicle[]
-  jobs      Job[]
-  staff     StaffMember[]
-  auditLogs AuditLog[]
+  garage           Garage?
+  customers        Customer[]
+  vehicles         Vehicle[]
+  jobs             Job[]
+  staff            StaffMember[]
+  auditLogs        AuditLog[]
+  serviceProviders ServiceProvider[]
 }
 
 model Garage {
-  id             String   @id @default(uuid())
-  organizationId String   @unique
+  id             String       @id @default(uuid())
+  organizationId String       @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  name        String
-  phone       String?
-  address     String?
-  city        String   @default("Addis Ababa")
+  name          String
+  phone         String?
+  address       String?
+  city          String    @default("Addis Ababa")
   businessHours Json?
-  verifiedAt  DateTime?
+  verifiedAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  staff     StaffMember[]
-  jobs      Job[]
+  staff StaffMember[]
+  jobs  Job[]
 }
 
 model StaffMember {
@@ -207,7 +288,8 @@ model StaffMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignedJobs Job[] @relation("AssignedTechnician")
+  assignedJobs     Job[]      @relation("AssignedTechnician")
+  decidedApprovals Approval[] @relation("ApprovalDecidedByStaff")
 
   @@unique([garageId, userId])
   @@index([organizationId])
@@ -228,14 +310,18 @@ model Customer {
   email    String?
   notes    String?
 
+  /// When this customer is itself a fleet company on Le Garage — the
+  /// record a garage's work-order jobs are filed under (docs/WORK-ORDERS.md).
+  linkedOrganizationId String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  jobs           Job[]
-  ownedVehicles  VehicleOwnerHistory[]
-  approvals      Approval[]            @relation("ApprovalDecidedByCustomer")
-  ownerLinks     CustomerLink[]
+  jobs          Job[]
+  ownedVehicles VehicleOwnerHistory[]
+  approvals     Approval[]            @relation("ApprovalDecidedByCustomer")
+  ownerLinks    CustomerLink[]
 
   @@index([organizationId, phone])
   @@index([organizationId, fullName])
@@ -246,26 +332,40 @@ model Vehicle {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  vin          String?
-  licensePlate String
-  make         String
-  model        String
-  year         Int?
-  color        String?
+  vin              String?
+  licensePlate     String
+  make             String
+  model            String
+  year             Int?
+  color            String?
   lastKnownMileage Int?
+  vehicleType      VehicleType?
+  status           VehicleStatus @default(ACTIVE)
+
+  // Vehicle profile (fleet orgs, docs/FLEET.md). Driver is plain contact
+  // details for now — drivers don't have accounts yet.
+  fuelType    FuelType?
+  acquiredAt  DateTime?
+  driverName  String?
+  driverPhone String?
+  notes       String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  ownerHistory VehicleOwnerHistory[]
-  jobs         Job[]
-  attachments  Attachment[]
+  ownerHistory   VehicleOwnerHistory[]
+  jobs           Job[]
+  attachments    Attachment[]
   serviceRecords ServiceRecord[]
 
-  @@unique([vin])
+  // VIN is unique per tenant, not globally: the same physical vehicle can
+  // legitimately exist in a fleet company's register *and* a garage's
+  // records, and a global constraint leaked VIN existence across tenants.
+  @@unique([organizationId, vin])
   @@index([organizationId, licensePlate])
   @@index([organizationId])
+  @@index([organizationId, status])
 }
 
 /// Links an owner-mobile identity (User, with no staff membership) to a
@@ -292,17 +392,47 @@ model CustomerLink {
 }
 
 model VehicleOwnerHistory {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   vehicleId  String
-  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   customerId String
-  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   startedAt DateTime  @default(now())
   endedAt   DateTime?
 
   @@index([vehicleId])
   @@index([customerId])
+}
+
+/// An external garage/service provider in a FLEET organization's private
+/// directory (docs/FLEET.md). Org-owned data like Customer: another tenant
+/// can never see it. Providers have no login in the first release — the
+/// fleet's own staff record their estimates and invoices (manager-led).
+model ServiceProvider {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name    String
+  phone   String?
+  address String?
+  notes   String?
+  active  Boolean @default(true)
+
+  /// Set when this provider is a garage that uses Le Garage itself — repairs
+  /// can then be sent to it as work orders it accepts and works in its own
+  /// account (docs/WORK-ORDERS.md). Null = an offline garage the fleet's own
+  /// staff record estimates and bills for.
+  garageOrganizationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs Job[]
+
+  @@index([organizationId])
+  @@index([garageOrganizationId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -317,8 +447,15 @@ model Job {
   garage         Garage       @relation(fields: [garageId], references: [id], onDelete: Cascade)
   vehicleId      String
   vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
-  customerId     String
-  customer       Customer     @relation(fields: [customerId], references: [id])
+  /// Required for GARAGE orgs (who brought the car in); always null for
+  /// FLEET orgs, where the organization itself owns the vehicle.
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  /// FLEET orgs only: the external garage doing the work, from the
+  /// organization's own private provider directory.
+  serviceProviderId String?
+  serviceProvider   ServiceProvider? @relation(fields: [serviceProviderId], references: [id], onDelete: NoAction)
 
   assignedTechnicianId String?
   assignedTechnician   StaffMember? @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id])
@@ -327,47 +464,48 @@ model Job {
   complaint       String
   mileageAtIntake Int?
 
-  intakeAt        DateTime  @default(now())
-  diagnosingAt    DateTime?
+  intakeAt          DateTime  @default(now())
+  diagnosingAt      DateTime?
   waitingApprovalAt DateTime?
-  approvedAt      DateTime?
-  inProgressAt    DateTime?
-  qualityCheckAt  DateTime?
-  readyAt         DateTime?
-  collectedAt     DateTime?
-  cancelledAt     DateTime?
+  approvedAt        DateTime?
+  inProgressAt      DateTime?
+  qualityCheckAt    DateTime?
+  readyAt           DateTime?
+  collectedAt       DateTime?
+  cancelledAt       DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  statusEvents JobStatusEvent[]
-  diagnoses    Diagnosis[]
-  notes        JobNote[]
-  estimates    Estimate[]
-  approvals    Approval[]
-  parts        JobPart[]
-  labor        JobLabor[]
-  invoices     Invoice[]
-  attachments  Attachment[]
+  statusEvents  JobStatusEvent[]
+  diagnoses     Diagnosis[]
+  notes         JobNote[]
+  estimates     Estimate[]
+  approvals     Approval[]
+  parts         JobPart[]
+  labor         JobLabor[]
+  invoices      Invoice[]
+  attachments   Attachment[]
   serviceRecord ServiceRecord?
 
   @@index([organizationId, status])
   @@index([organizationId, vehicleId])
   @@index([organizationId, customerId])
   @@index([organizationId, assignedTechnicianId])
+  @@index([organizationId, serviceProviderId])
 }
 
 model JobStatusEvent {
-  id     String @id @default(uuid())
-  jobId  String
-  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id    String @id @default(uuid())
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  fromStatus   JobStatus?
-  toStatus     JobStatus
-  actorUserId  String?
-  note         String?
-  createdAt    DateTime @default(now())
+  fromStatus  JobStatus?
+  toStatus    JobStatus
+  actorUserId String?
+  note        String?
+  createdAt   DateTime   @default(now())
 
   @@index([jobId])
 }
@@ -378,13 +516,16 @@ model Diagnosis {
   jobId          String
   job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  authorStaffId    String
-  observedProblem  String
-  suspectedCause   String?
-  confirmedCause   String?
-  severity         String?
+  authorStaffId     String
+  observedProblem   String
+  suspectedCause    String?
+  confirmedCause    String?
+  severity          String?
   recommendedRepair String?
-  notes            String?
+  notes             String?
+
+  /// On a fleet repair: the garage diagnosis this is a copy of (work orders).
+  externalDiagnosisId String? @unique
 
   createdAt DateTime @default(now())
 
@@ -424,21 +565,24 @@ model Estimate {
   jobId          String
   job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  version   Int
-  status    EstimateStatus @default(DRAFT)
-  currency  Currency       @default(ETB)
+  version  Int
+  status   EstimateStatus @default(DRAFT)
+  currency Currency       @default(ETB)
 
-  subtotal Int @default(0)
-  taxTotal Int @default(0)
+  subtotal      Int @default(0)
+  taxTotal      Int @default(0)
   discountTotal Int @default(0)
-  total    Int @default(0)
+  total         Int @default(0)
 
   createdByStaffId String
-  createdAt DateTime  @default(now())
-  sentAt    DateTime?
-  decidedAt DateTime?
+  createdAt        DateTime  @default(now())
+  sentAt           DateTime?
+  decidedAt        DateTime?
 
   supersedesEstimateId String?
+
+  /// On a fleet repair: the garage's estimate this is a copy of (work orders).
+  externalEstimateId String? @unique
 
   /// An unguessable token letting a customer view this specific estimate
   /// read-only, no account required (docs/PRODUCT.md §"Customer Approval
@@ -449,8 +593,8 @@ model Estimate {
   /// prismaUnscoped reasoning in apps/api/src/estimates.
   shareToken String? @unique
 
-  items     EstimateItem[]
-  approvals Approval[]
+  items       EstimateItem[]
+  approvals   Approval[]
   attachments Attachment[]
 
   @@unique([jobId, version])
@@ -463,12 +607,14 @@ model EstimateItem {
   estimateId String
   estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 
-  type        EstimateItemType
-  description String
-  quantity    Int              @default(1)
-  unitPrice   Int
-  discount    Int              @default(0)
-  lineTotal   Int
+  type           EstimateItemType
+  description    String
+  quantity       Int              @default(1)
+  unitPrice      Int
+  discount       Int              @default(0)
+  lineTotal      Int
+  /// On a fleet copy: the garage estimate line this mirrors.
+  externalItemId String?
 
   createdAt DateTime @default(now())
 
@@ -480,16 +626,20 @@ model EstimateItem {
 model Approval {
   id             String   @id @default(uuid())
   organizationId String
-  jobId      String
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  estimateId String
-  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  estimateId     String
+  estimate       Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 
-  method                 ApprovalMethod
-  decidedByCustomerId    String?
-  decidedByCustomer      Customer? @relation("ApprovalDecidedByCustomer", fields: [decidedByCustomerId], references: [id])
-  loggedByStaffId        String?
-  note                   String?
+  method              ApprovalMethod
+  decidedByCustomerId String?
+  decidedByCustomer   Customer?      @relation("ApprovalDecidedByCustomer", fields: [decidedByCustomerId], references: [id])
+  loggedByStaffId     String?
+  /// Who actually made the decision, when it was made by staff rather than
+  /// the customer (method STAFF_DECISION — fleet manager approvals).
+  decidedByStaffId    String?
+  decidedByStaff      StaffMember?   @relation("ApprovalDecidedByStaff", fields: [decidedByStaffId], references: [id], onDelete: NoAction)
+  note                String?
 
   createdAt DateTime @default(now())
 
@@ -501,9 +651,9 @@ model Approval {
 }
 
 model ApprovalItemDecision {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   approvalId     String
-  approval       Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  approval       Approval     @relation(fields: [approvalId], references: [id], onDelete: Cascade)
   estimateItemId String
   estimateItem   EstimateItem @relation(fields: [estimateItemId], references: [id], onDelete: Cascade)
 
@@ -519,18 +669,18 @@ model ApprovalItemDecision {
 model JobPart {
   id             String @id @default(uuid())
   organizationId String
-  jobId String
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  name       String
-  partNumber String?
-  brand      String?
-  condition  PartCondition @default(NEW)
-  source     PartSource    @default(GARAGE_SUPPLIED)
-  supplier   String?
-  quantity   Int           @default(1)
-  unitCost   Int?
-  unitPrice  Int
+  name           String
+  partNumber     String?
+  brand          String?
+  condition      PartCondition @default(NEW)
+  source         PartSource    @default(GARAGE_SUPPLIED)
+  supplier       String?
+  quantity       Int           @default(1)
+  unitCost       Int?
+  unitPrice      Int
   warrantyMonths Int?
 
   createdAt DateTime @default(now())
@@ -542,14 +692,14 @@ model JobPart {
 model JobLabor {
   id             String @id @default(uuid())
   organizationId String
-  jobId String
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  description String
+  description       String
   technicianStaffId String?
-  hours       Float?
-  rate        Int?
-  amount      Int
+  hours             Float?
+  rate              Int?
+  amount            Int
 
   createdAt DateTime @default(now())
 
@@ -568,25 +718,28 @@ model JobLabor {
 model Invoice {
   id             String @id @default(uuid())
   organizationId String
-  jobId String
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   version  Int
   status   InvoiceStatus @default(DRAFT)
   currency Currency      @default(ETB)
 
-  subtotal Int @default(0)
-  taxTotal Int @default(0)
+  subtotal      Int @default(0)
+  taxTotal      Int @default(0)
   discountTotal Int @default(0)
-  total    Int @default(0)
+  total         Int @default(0)
 
   supersedesInvoiceId String?
-  issuedAt DateTime?
-  voidedAt DateTime?
+
+  /// On a fleet repair: the garage invoice this is a copy of (work orders).
+  externalInvoiceId String?   @unique
+  issuedAt          DateTime?
+  voidedAt          DateTime?
 
   createdByStaffId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   items    InvoiceItem[]
   payments Payment[]
@@ -601,10 +754,14 @@ model InvoiceItem {
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
+  /// Which JobPart/JobLabor kind this line was generated from — drives
+  /// spend-by-category reporting. Null on invoices generated before this
+  /// column existed.
+  type        EstimateItemType?
   description String
-  quantity    Int    @default(1)
+  quantity    Int               @default(1)
   unitPrice   Int
-  discount    Int    @default(0)
+  discount    Int               @default(0)
   lineTotal   Int
 
   @@index([invoiceId])
@@ -613,17 +770,17 @@ model InvoiceItem {
 model Payment {
   id             String  @id @default(uuid())
   organizationId String
-  invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId      String
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  amount   Int
-  method   PaymentMethod
+  amount    Int
+  method    PaymentMethod
   reference String?
-  paidAt   DateTime @default(now())
-  voidedAt DateTime?
+  paidAt    DateTime      @default(now())
+  voidedAt  DateTime?
 
   recordedByStaffId String
-  createdAt DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   @@index([invoiceId])
   @@index([organizationId])
@@ -634,28 +791,33 @@ model Payment {
 // ─────────────────────────────────────────────────────────────────────────
 
 model Attachment {
-  id             String   @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
 
-  entityType AttachmentEntityType
-  jobId        String?
-  job          Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  diagnosisId  String?
-  diagnosis    Diagnosis? @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
-  estimateId   String?
-  estimate     Estimate?  @relation(fields: [estimateId], references: [id], onDelete: Cascade)
-  vehicleId    String?
-  vehicle      Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  entityType  AttachmentEntityType
+  jobId       String?
+  job         Job?                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  diagnosisId String?
+  diagnosis   Diagnosis?           @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+  estimateId  String?
+  estimate    Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  vehicleId   String?
+  vehicle     Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
-  objectKey String
-  mimeType  String
-  sizeBytes Int
-  uploadedByStaffId String
+  objectKey            String
+  mimeType             String
+  sizeBytes            Int
+  uploadedByStaffId    String
+  tag                  AttachmentTag?
+  caption              String?
+  /// On a fleet repair: the garage attachment this is a copy of (work orders).
+  externalAttachmentId String?        @unique
 
   createdAt DateTime @default(now())
 
   @@index([organizationId])
   @@index([jobId])
+  @@index([vehicleId])
 }
 
 model ServiceRecord {
@@ -679,15 +841,15 @@ model ServiceRecord {
 }
 
 model AuditLog {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  entityType String
-  entityId   String
-  action     String
+  entityType  String
+  entityId    String
+  action      String
   actorUserId String?
-  actorUser   User?  @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorUser   User?   @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   beforeState Json?
   afterState  Json?
@@ -715,10 +877,10 @@ model Notification {
   title   String
   body    String
   payload Json?
-  status  NotificationStatus @default(PENDING)
+  status  NotificationStatus  @default(PENDING)
   readAt  DateTime?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   sentAt    DateTime?
 
   @@index([userId])
@@ -732,7 +894,7 @@ model Notification {
 /// COMPLETED the original response is replayed rather than re-executed.
 /// Rows are not currently swept — see docs/OPEN_QUESTIONS.md.
 model IdempotencyRecord {
-  id             String   @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
   route          String
   key            String
@@ -745,4 +907,31 @@ model IdempotencyRecord {
 
   @@unique([organizationId, route, key])
   @@index([organizationId])
+}
+
+/// A fleet repair sent to a garage on Le Garage (docs/WORK-ORDERS.md). The
+/// one record that spans two tenants: each side keeps its own Job, and this
+/// links them. Always queried by fleetOrganizationId or garageOrganizationId
+/// (tenant-scope guard, "two-sided" models).
+model WorkOrder {
+  id                   String  @id @default(uuid())
+  fleetOrganizationId  String
+  fleetJobId           String
+  garageOrganizationId String
+  garageJobId          String? @unique
+  serviceProviderId    String
+
+  status        WorkOrderStatus @default(SENT)
+  message       String?
+  declineReason String?
+
+  sentByUserId      String
+  respondedByUserId String?
+  sentAt            DateTime  @default(now())
+  respondedAt       DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  @@index([fleetOrganizationId, status])
+  @@index([fleetJobId])
+  @@index([garageOrganizationId, status])
 }

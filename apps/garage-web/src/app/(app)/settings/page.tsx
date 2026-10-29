@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useGarage, useUpdateGarage } from "@/hooks/use-garage";
+import { useIsFleet } from "@/hooks/use-org";
 import { useAuth } from "@/hooks/use-auth";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { humanizeApiError } from "@/lib/api-error";
 export default function SettingsPage() {
   const { me } = useAuth();
   const garage = useGarage();
+  const isFleet = useIsFleet();
   const update = useUpdateGarage();
   const canEdit = me?.staffMember && ["OWNER", "MANAGER"].includes(me.staffMember.role);
 
@@ -45,7 +47,7 @@ export default function SettingsPage() {
         address: form.address || undefined,
         city: form.city || undefined,
       });
-      toast.success("Garage profile updated");
+      toast.success(isFleet ? "Company profile updated" : "Garage profile updated");
     } catch (err) {
       toast.error("Couldn't save changes", { description: humanizeApiError(err) });
     }
@@ -64,12 +66,12 @@ export default function SettingsPage() {
     <div className="max-w-lg space-y-6">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Settings</h1>
-        <p className="mt-0.5 text-[13.5px] text-graphite">Your garage&apos;s profile.</p>
+        <p className="mt-0.5 text-[13.5px] text-graphite">{isFleet ? "Your company's profile." : "Your garage's profile."}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-line bg-surface p-5">
         <div className="space-y-1.5">
-          <Label htmlFor="name">Garage name</Label>
+          <Label htmlFor="name">{isFleet ? "Company name" : "Garage name"}</Label>
           <Input id="name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={!canEdit} />
         </div>
         <div className="space-y-1.5">

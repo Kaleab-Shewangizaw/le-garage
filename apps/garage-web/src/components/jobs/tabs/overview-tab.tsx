@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api-error";
 import { Badge } from "@/components/ui/status-pill";
 import { PhotoAttachments } from "@/components/jobs/photo-attachments";
+import { REPAIR_PHOTO_TAGS } from "@/lib/job-labels";
 
 const SEVERITY_TONE: Record<string, "neutral" | "attention" | "danger"> = {
   LOW: "neutral",
@@ -29,7 +30,7 @@ export function OverviewTab({ job }: { job: Job }) {
       </Section>
 
       <Section title="Photos">
-        <PhotoAttachments entityType="JOB" entityId={job.id} />
+        <PhotoAttachments entityType="JOB" entityId={job.id} tagOptions={REPAIR_PHOTO_TAGS} />
       </Section>
 
       <DiagnosisSection job={job} />

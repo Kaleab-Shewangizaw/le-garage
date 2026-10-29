@@ -34,15 +34,19 @@ cp apps/api/.env.example packages/database/.env   # prisma CLI reads its own pac
 
 pnpm db:generate     # generate the Prisma client
 pnpm db:migrate       # create + apply the initial migration (prompts for a migration name on schema changes)
-pnpm db:seed          # demo organization/garage/staff/customer/vehicle
+pnpm db:seed          # demo data (empty database only) — or `pnpm db:reset` to wipe + migrate + seed
+                      # (⚠ local dev databases only). Personas: docs/WALKTHROUGH.md
 ```
 
-Seeded logins (see `packages/database/prisma/seed.ts`):
-- `owner@legarage.dev` / `password123` (garage OWNER role, garage-web)
-- `tech@legarage.dev` / `password123` (TECHNICIAN, garage-web)
-- `driver@legarage.dev` / `password123` (vehicle owner, owner-mobile —
-  pre-linked to the seeded vehicle, with one demo job already in
-  `WAITING_APPROVAL` so there's something real to see on first login)
+Seeded logins (see `packages/database/prisma/seed.ts`), every password `password123` —
+the full cast and what each persona does is in [`WALKTHROUGH.md`](./WALKTHROUGH.md):
+- Platform admin: `admin@legarage.dev` → `/admin` console (docs/ADMIN.md)
+- Fleet "Demo Logistics PLC (demo data)": `fleet-owner@`, `supervisor@` (approves spend),
+  `coordinator@`, `coordinator2@`, `mechanic@legarage.dev` — vehicle profiles, repairs at every stage,
+  two months of invoiced history, and 31 demo photos (needs MinIO running; illustrations stamped DEMO IMAGE)
+- Fleet "Addis Water Delivery (demo data)": `water-owner@legarage.dev`
+- Garage "Bole Auto Care": `owner@`, `manager@`, `frontdesk@`, `tech@legarage.dev`
+- Owner app: `driver@legarage.dev` (Sara) — a brake job waiting on her approval
 
 **Object storage (photo/document uploads):** the API creates its MinIO
 bucket (`legarage-attachments` by default) automatically on startup if it
@@ -177,8 +181,13 @@ no shared-CSS mechanism between the two apps (`OWNER-APP.md` §11).
 pnpm --filter @le-garage/api test
 
 # E2E/integration tests (spin up the full Nest app against the real DB —
-# requires postgres running and migrated, see above)
-pnpm --filter @le-garage/api test:e2e
+# requires postgres running and migrated, see above). Suites create new orgs
+# on every run and never clean up, so point them at a separate database:
+#   createdb -O legarage legarage_test
+#   DATABASE_URL=postgresql://legarage:legarage@localhost:5432/legarage_test?schema=public \
+#     pnpm --filter @le-garage/database migrate:deploy
+DATABASE_URL=postgresql://legarage:legarage@localhost:5432/legarage_test?schema=public \
+  pnpm --filter @le-garage/api test:e2e
 ```
 
 `test/tenant-isolation.e2e-spec.ts` is the release-gate suite from

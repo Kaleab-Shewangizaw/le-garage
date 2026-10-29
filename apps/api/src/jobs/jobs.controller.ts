@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { JobStatus, Role } from "@le-garage/database";
 import {
+  assignServiceProviderSchema,
   assignTechnicianSchema,
   createJobSchema,
   updateJobStatusSchema,
+  type AssignServiceProviderInput,
   type AssignTechnicianInput,
   type CreateJobInput,
   type UpdateJobStatusInput,
@@ -77,5 +79,15 @@ export class JobsController {
     @Body(new ZodValidationPipe(assignTechnicianSchema)) body: AssignTechnicianInput,
   ) {
     return this.jobsService.assignTechnician(user.organizationId, user.garageId, id, user.sub, body);
+  }
+
+  @Patch(":id/service-provider")
+  @Roles(Role.OWNER, Role.MANAGER, Role.FRONT_DESK)
+  async assignServiceProvider(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(assignServiceProviderSchema)) body: AssignServiceProviderInput,
+  ) {
+    return this.jobsService.assignServiceProvider(user.organizationId, id, user.sub, body);
   }
 }

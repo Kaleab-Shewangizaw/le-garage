@@ -199,6 +199,33 @@ request by. Rate-limited (30/min) against enumeration attempts.
 GET    /api/v1/dashboard/summary       counts by status, outstanding balance, today's activity
 ```
 
+### Fleet organizations (docs/FLEET.md)
+```
+POST   /api/v1/organizations                 body.kind: "GARAGE" (default) | "FLEET"; garageName optional for FLEET
+POST   /api/v1/jobs                          FLEET: vehicleId|newVehicle, complaint, serviceProviderId? — no customer
+PATCH  /api/v1/jobs/:id/service-provider     [OWNER, MANAGER, FRONT_DESK] { serviceProviderId | null } (FLEET only)
+POST   /api/v1/estimates/:id/approvals       FLEET: [OWNER, MANAGER] method STAFF_DECISION; auto-advances job to APPROVED
+GET    /api/v1/vehicles?status=&limit=       limit ≤ 200 (default 20)
+PATCH  /api/v1/vehicles/:id                  { status } — not TECHNICIAN; audit-logged. Profile fields
+                                             fuelType, acquiredAt, driverName, driverPhone, notes (null clears)
+GET    /api/v1/vehicles/:id/visits           every service visit: findings, provider, cost, photos
+PATCH  /api/v1/files/:id                     { tag, caption } — relabel photo proof; audit-logged
+GET    /api/v1/service-providers?includeInactive=true
+GET    /api/v1/service-providers/:id         provider + its recent jobs
+POST   /api/v1/service-providers             [OWNER, MANAGER, FRONT_DESK]
+PATCH  /api/v1/service-providers/:id         [OWNER, MANAGER, FRONT_DESK] incl. { active }
+GET    /api/v1/service-providers/directory?search=   garages on Le Garage (business details only)
+POST   /api/v1/jobs/:id/work-order           FLEET [OWNER, MANAGER, FRONT_DESK] { message? } — send to the connected garage
+GET    /api/v1/work-orders?status=           both sides; each row links only to the caller's own job
+POST   /api/v1/work-orders/:id/accept        GARAGE — creates the garage's own job
+POST   /api/v1/work-orders/:id/decline       GARAGE { reason }
+POST   /api/v1/work-orders/:id/cancel        FLEET — only while SENT
+GET    /api/v1/notifications                 the signed-in staff member's in-app notices
+POST   /api/v1/notifications/:id/read · /read-all
+GET    /api/v1/reports/fleet-summary         [OWNER, MANAGER, FRONT_DESK] availability, approvals queue, month spend
+GET    /api/v1/reports/spend?from=&to=       [OWNER, MANAGER] spend/downtime/turnaround for [from, to), ≤ 366 days
+```
+
 ### `owner` — vehicle-owner (owner-mobile), Phase 10 (docs/OWNER-APP.md)
 A separate route group, not staff-authenticated: every route is
 `@Public()` at the global-guard level and instead protected by
@@ -236,11 +263,15 @@ All `/owner/*` routes marked `[OwnerJwtAuthGuard]` above (and every route
 not listed as unauthenticated) require an owner access token; a staff
 token fails signature verification against it outright.
 
-### Admin (`PLATFORM_ADMIN` only, cross-tenant)
+### Admin (`PLATFORM_ADMIN` only, cross-tenant — docs/ADMIN.md)
 ```
-GET    /api/v1/admin/organizations
-GET    /api/v1/admin/garages
-GET    /api/v1/admin/jobs
+GET    /api/v1/admin/overview
+GET    /api/v1/admin/organizations?search=&kind=
+GET    /api/v1/admin/organizations/:id
+POST   /api/v1/admin/organizations/:id/suspend      { reason }
+POST   /api/v1/admin/organizations/:id/reactivate
+PATCH  /api/v1/admin/staff/:staffId                 { active, reason }
+GET    /api/v1/admin/audit?organizationId=&action=&limit=
 ```
 
 ## 3. Authorization matrix (see `AUTH.md` §3–4 for full detail)

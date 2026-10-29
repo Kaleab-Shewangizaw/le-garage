@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { useAttachmentUrl } from "@/hooks/use-files";
 import type { Attachment } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { ATTACHMENT_TAG_LABEL } from "@/lib/job-labels";
+import { formatDateTime } from "@/lib/format";
 
 /**
  * A full-screen in-app viewer for job photos — clicking a thumbnail should
@@ -49,6 +51,13 @@ export function ImageViewer({
         >
           <DialogPrimitive.Title className="sr-only">Photo</DialogPrimitive.Title>
           {current && <ViewerImage key={current.id} attachment={current} />}
+          {current && (current.tag || current.caption) && (
+            <div className="absolute left-4 top-4 max-w-[70vw] rounded-md bg-black/40 px-3 py-2 text-paper" onClick={(e) => e.stopPropagation()}>
+              {current.tag && <p className="text-[12px] font-semibold uppercase tracking-wide">{ATTACHMENT_TAG_LABEL[current.tag]}</p>}
+              {current.caption && <p className="text-[13px]">{current.caption}</p>}
+              <p className="font-mono text-[11px] text-paper/70">{formatDateTime(current.createdAt)}</p>
+            </div>
+          )}
 
           <DialogPrimitive.Close
             className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-paper/90 transition-colors hover:bg-black/50 hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paper/50"

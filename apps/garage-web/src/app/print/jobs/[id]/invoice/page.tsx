@@ -68,9 +68,21 @@ export default function PrintInvoicePage({ params }: { params: Promise<{ id: str
 
         <div className="mt-6 grid grid-cols-2 gap-6">
           <div>
-            <p className="eyebrow mb-1">Billed to</p>
-            <p className="text-[13.5px] font-medium">{job.data.customer.fullName}</p>
-            <p className="font-mono text-[12.5px] text-graphite">{job.data.customer.phone}</p>
+            {job.data.customer ? (
+              <>
+                <p className="eyebrow mb-1">Billed to</p>
+                <p className="text-[13.5px] font-medium">{job.data.customer.fullName}</p>
+                <p className="font-mono text-[12.5px] text-graphite">{job.data.customer.phone}</p>
+              </>
+            ) : (
+              <>
+                <p className="eyebrow mb-1">Service provider</p>
+                <p className="text-[13.5px] font-medium">{job.data.serviceProvider?.name ?? "Not recorded"}</p>
+                {job.data.serviceProvider?.phone && (
+                  <p className="font-mono text-[12.5px] text-graphite">{job.data.serviceProvider.phone}</p>
+                )}
+              </>
+            )}
           </div>
           <div>
             <p className="eyebrow mb-1">Vehicle</p>

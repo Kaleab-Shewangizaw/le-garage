@@ -15,6 +15,7 @@
     "db:generate": "pnpm --filter @le-garage/database generate",
     "db:migrate": "pnpm --filter @le-garage/database migrate:dev",
     "db:seed": "pnpm --filter @le-garage/database seed",
+    "db:reset": "pnpm --filter @le-garage/database reset",
     "db:studio": "pnpm --filter @le-garage/database studio"
   },
   "devDependencies": {

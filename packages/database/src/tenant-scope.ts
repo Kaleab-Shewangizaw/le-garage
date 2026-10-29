@@ -24,7 +24,16 @@ const TENANT_SCOPED_MODELS = new Set([
   "Attachment",
   "ServiceRecord",
   "IdempotencyRecord",
+  "ServiceProvider",
 ]);
+
+/**
+ * Models that span two tenants (docs/WORK-ORDERS.md). They have no single
+ * organizationId, so every scoped query must name at least one side.
+ */
+const TWO_SIDED_MODELS: Record<string, string[]> = {
+  WorkOrder: ["fleetOrganizationId", "garageOrganizationId"],
+};
 
 const OPERATIONS_REQUIRING_ORG_WHERE = new Set([
   "findFirst",
@@ -59,6 +68,23 @@ export function withTenantScopeGuard(client: PrismaClient) {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
+          const sides = TWO_SIDED_MODELS[model];
+          if (sides) {
+            if (operation === "findUnique" || operation === "findUniqueOrThrow") {
+              throw new Error(`Tenant-scope violation: ${model}.${operation}() — use findFirst with ${sides.join(" or ")}.`);
+            }
+            if (OPERATIONS_REQUIRING_ORG_WHERE.has(operation)) {
+              const where = (args as { where?: Record<string, unknown> } | undefined)?.where;
+              // An OR is acceptable only if every branch is itself scoped to a side.
+              const scoped = (w: Record<string, unknown>) => sides.some((k) => k in w);
+              const orBranches = where && Array.isArray(where.OR) ? (where.OR as Record<string, unknown>[]) : null;
+              if (!where || !(scoped(where) || (orBranches && orBranches.length > 0 && orBranches.every(scoped)))) {
+                throw new Error(`Tenant-scope violation: ${model}.${operation}() must filter by ${sides.join(" or ")}.`);
+              }
+            }
+            return query(args);
+          }
+
           if (!TENANT_SCOPED_MODELS.has(model)) {
             return query(args);
           }

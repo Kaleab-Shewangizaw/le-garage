@@ -4,6 +4,7 @@ import { EstimateStatus } from "@le-garage/database";
 import type { CreateEstimateInput } from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
+import { assertNotGarageHandled, workOrderForGarageJob } from "../common/work-order-lock";
 import { AuditService } from "../audit/audit.service";
 import { computeEstimateTotals, computeItemLineTotal } from "./money";
 
@@ -52,6 +53,7 @@ export class EstimatesService {
     input: CreateEstimateInput,
   ) {
     await this.assertJobExists(organizationId, jobId);
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
 
     const totals = computeEstimateTotals(input.items, input.taxTotal);
 
@@ -130,6 +132,7 @@ export class EstimatesService {
    * Supersedes whichever estimate was previously SENT for this job, if any.
    */
   async send(organizationId: string, jobId: string, estimateId: string, actorUserId: string) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     const estimate = await this.prisma.client.estimate.findFirst({
       where: { id: estimateId, jobId, organizationId },
     });
@@ -175,9 +178,18 @@ export class EstimatesService {
    * pricing before the garage has committed to it.
    */
   async share(organizationId: string, jobId: string, estimateId: string, actorUserId: string) {
-    const estimate = await this.prisma.client.estimate.findFirst({ where: { id: estimateId, jobId, organizationId } });
+    const estimate = await this.prisma.client.estimate.findFirst({
+      where: { id: estimateId, jobId, organizationId },
+      include: { job: { select: { customerId: true } } },
+    });
     if (!estimate) {
       throw AppError.notFound("ESTIMATE_NOT_FOUND", "Estimate not found");
+    }
+    // A share link is an unauthenticated public URL meant for a garage's
+    // customer. A fleet repair has no customer, and its costs are the
+    // company's internal data — never expose them on a public link.
+    if (!estimate.job.customerId || (await workOrderForGarageJob(this.prisma, organizationId, jobId))) {
+      throw AppError.conflict("SHARE_NOT_AVAILABLE", "Public estimate links are only for walk-in customer repairs — fleet customers approve in Le Garage");
     }
     if (estimate.status === EstimateStatus.DRAFT) {
       throw AppError.conflict("ESTIMATE_NOT_SENT", "Send the estimate before sharing it with the customer");

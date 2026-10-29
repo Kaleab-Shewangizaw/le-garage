@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Lock, Plus, Trash2, Wrench, PackageCheck } from "lucide-react";
+import { garageHandles } from "@/lib/work-orders";
 import type { Job } from "@/lib/api-types";
 import { Section } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,11 +17,17 @@ import { humanizeApiError } from "@/lib/api-error";
 const FRONT_OFFICE_ROLES = new Set(["OWNER", "MANAGER", "FRONT_DESK"]);
 
 export function PartsLaborTab({ job }: { job: Job }) {
-  const isLocked = job.invoices.some((inv) => inv.status === "ISSUED");
+  const handledByGarage = garageHandles(job);
+  const isLocked = handledByGarage || job.invoices.some((inv) => inv.status === "ISSUED");
 
   return (
     <div className="space-y-8">
-      {isLocked && (
+      {handledByGarage ? (
+        <div className="flex items-center gap-2 rounded-md bg-paper px-3.5 py-2.5 text-[13px] text-graphite">
+          <Lock className="h-3.5 w-3.5" />
+          {job.workOrder?.partnerName} records the parts and labor on their side — you&apos;ll see them on the invoice they send.
+        </div>
+      ) : isLocked && (
         <div className="flex items-center gap-2 rounded-md bg-paper px-3.5 py-2.5 text-[13px] text-graphite">
           <Lock className="h-3.5 w-3.5" />
           Parts and labor are locked — this job has an issued invoice. Void it to make changes.

@@ -1,6 +1,9 @@
+"use client";
+
 import { Check, PauseCircle, XCircle } from "lucide-react";
 import type { JobStatus } from "@le-garage/types";
-import { JOB_STAGE_SHORT_LABEL, JOB_TIMELINE_STAGES } from "@/lib/job-labels";
+import { JOB_TIMELINE_STAGES } from "@/lib/job-labels";
+import { useJobLabels } from "@/hooks/use-org";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +49,7 @@ export function JobTimeline({
   timestamps?: JobTimelineTimestamps;
   compact?: boolean;
 }) {
+  const labels = useJobLabels();
   if (status === "ON_HOLD") {
     return (
       <div className="flex items-center gap-2 rounded-md bg-signal-soft px-3 py-2 text-[13px] text-signal-hover">
@@ -58,7 +62,7 @@ export function JobTimeline({
     return (
       <div className="flex items-center gap-2 rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">
         <XCircle className="h-4 w-4 shrink-0" />
-        <span>Job cancelled</span>
+        <span>{labels.noun === "repair" ? "Repair cancelled" : "Job cancelled"}</span>
       </div>
     );
   }
@@ -100,7 +104,7 @@ export function JobTimeline({
                   isCurrent && "bg-signal text-paper ring-4 ring-signal-soft",
                   !isDone && !isCurrent && "border-2 border-line bg-surface",
                 )}
-                title={JOB_STAGE_SHORT_LABEL[stage]}
+                title={labels.short[stage]}
               >
                 {isDone && <Check className={compact ? "h-2.5 w-2.5" : "h-3.5 w-3.5"} strokeWidth={3} />}
               </div>
@@ -111,7 +115,7 @@ export function JobTimeline({
             {!compact && (
               <div className="mt-2 text-center">
                 <p className={cn("text-[12px] font-medium", isCurrent ? "text-ink" : isDone ? "text-graphite" : "text-muted")}>
-                  {JOB_STAGE_SHORT_LABEL[stage]}
+                  {labels.short[stage]}
                 </p>
                 {timestamp && <p className="mt-0.5 font-mono text-[11px] text-muted">{formatDateTime(timestamp)}</p>}
               </div>

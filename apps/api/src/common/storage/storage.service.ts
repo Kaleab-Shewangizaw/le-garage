@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import {
+  CopyObjectCommand,
   CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -72,6 +73,11 @@ export class StorageService implements OnModuleInit {
     } catch {
       return { exists: false };
     }
+  }
+
+  /** Server-side copy — each organization keeps its own object for its own records (docs/WORK-ORDERS.md). */
+  async copyObject(sourceKey: string, targetKey: string): Promise<void> {
+    await this.client.send(new CopyObjectCommand({ Bucket: this.bucket, CopySource: `${this.bucket}/${sourceKey}`, Key: targetKey }));
   }
 
   async deleteObject(key: string): Promise<void> {

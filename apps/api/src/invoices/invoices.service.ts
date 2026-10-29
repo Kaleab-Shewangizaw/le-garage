@@ -1,8 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import { InvoiceStatus } from "@le-garage/database";
+import { EstimateItemType, InvoiceStatus } from "@le-garage/database";
 import type { GenerateInvoiceInput } from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
+import { assertNotGarageHandled } from "../common/work-order-lock";
 import { AuditService } from "../audit/audit.service";
 import { computeItemLineTotal } from "../estimates/money";
 
@@ -56,6 +57,7 @@ export class InvoicesService {
    * changed" moment, docs/DATABASE.md §8).
    */
   async generateDraft(organizationId: string, jobId: string, actorStaffId: string, actorUserId: string, input: GenerateInvoiceInput) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     await this.assertJobExists(organizationId, jobId);
 
     const activeIssued = await this.prisma.client.invoice.findFirst({
@@ -83,12 +85,14 @@ export class InvoicesService {
 
     const lineItems = [
       ...parts.map((p) => ({
+        type: EstimateItemType.PART,
         description: p.partNumber ? `${p.name} (${p.partNumber})` : p.name,
         quantity: p.quantity,
         unitPrice: p.unitPrice,
         discount: 0,
       })),
       ...labor.map((l) => ({
+        type: EstimateItemType.LABOR,
         description: l.description,
         quantity: 1,
         unitPrice: l.amount,
@@ -154,6 +158,7 @@ export class InvoicesService {
   }
 
   async issue(organizationId: string, jobId: string, invoiceId: string, actorUserId: string) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     const invoice = await this.prisma.client.invoice.findFirst({ where: { id: invoiceId, jobId, organizationId } });
     if (!invoice) {
       throw AppError.notFound("INVOICE_NOT_FOUND", "Invoice not found");

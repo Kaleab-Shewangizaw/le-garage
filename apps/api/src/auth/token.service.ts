@@ -90,9 +90,13 @@ export class TokenService {
     // legitimately unscoped, see @le-garage/database's prismaUnscoped doc comment.
     const staffMember = await this.prisma.unscopedClient.staffMember.findFirst({
       where: { userId: stored.userId, active: true },
+      include: { organization: { select: { suspendedAt: true } } },
     });
     if (!staffMember) {
       throw AppError.unauthorized("NO_ACTIVE_STAFF_MEMBERSHIP", "No active staff membership for this user");
+    }
+    if (staffMember.organization.suspendedAt) {
+      throw AppError.forbidden("ORGANIZATION_SUSPENDED", "This organization's access is suspended — contact Le Garage support");
     }
 
     const ctx: StaffContext = {

@@ -49,6 +49,7 @@ export class AuthService {
 
     const staffMember = await this.prisma.unscopedClient.staffMember.findFirst({
       where: { userId: user.id, active: true },
+      include: { organization: { select: { suspendedAt: true } } },
     });
     if (!staffMember) {
       await this.audit.record({
@@ -62,6 +63,17 @@ export class AuthService {
         "NO_ACTIVE_STAFF_MEMBERSHIP",
         "This account has no active staff membership at any garage",
       );
+    }
+
+    if (staffMember.organization.suspendedAt) {
+      await this.audit.record({
+        organizationId: staffMember.organizationId,
+        entityType: "User",
+        entityId: user.id,
+        action: "LOGIN_FAILED_ORGANIZATION_SUSPENDED",
+        actorUserId: user.id,
+      });
+      throw AppError.forbidden("ORGANIZATION_SUSPENDED", "This organization's access is suspended — contact Le Garage support");
     }
 
     const ctx: StaffContext = {
@@ -100,7 +112,7 @@ export class AuthService {
     });
     const staffMember = await this.prisma.client.staffMember.findFirst({
       where: { userId, organizationId, active: true },
-      include: { garage: true },
+      include: { garage: true, organization: { select: { id: true, name: true, kind: true } } },
     });
     return { user, staffMember };
   }

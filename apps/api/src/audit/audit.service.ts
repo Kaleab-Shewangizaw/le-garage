@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
+import { DomainEvents } from "../common/events/domain-events";
 
 export interface AuditEntry {
   organizationId: string | null;
@@ -33,6 +34,7 @@ export class AuditService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly notifications: NotificationsService,
+    private readonly events: DomainEvents,
   ) {}
 
   async record(entry: AuditEntry): Promise<void> {
@@ -60,5 +62,7 @@ export class AuditService {
         afterState: entry.afterState,
       });
     }
+
+    await this.events.publish(entry);
   }
 }

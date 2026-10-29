@@ -30,6 +30,12 @@ import { PaymentsModule } from "./payments/payments.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { FilesModule } from "./files/files.module";
 import { OwnerModule } from "./owner/owner.module";
+import { ServiceProvidersModule } from "./service-providers/service-providers.module";
+import { ReportsModule } from "./reports/reports.module";
+import { AdminModule } from "./admin/admin.module";
+import { DomainEventsModule } from "./common/events/domain-events";
+import { WorkOrdersModule } from "./work-orders/work-orders.module";
+import { StaffNotificationsModule } from "./notifications/staff-notifications.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -39,6 +45,7 @@ import { HealthController } from "./health.controller";
     // a stricter per-route @Throttle on top of this.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     PrismaModule,
+    DomainEventsModule,
     StorageModule,
     RealtimeModule,
     NotificationsModule,
@@ -61,6 +68,11 @@ import { HealthController } from "./health.controller";
     DashboardModule,
     FilesModule,
     OwnerModule,
+    ServiceProvidersModule,
+    ReportsModule,
+    AdminModule,
+    StaffNotificationsModule,
+    WorkOrdersModule,
   ],
   controllers: [HealthController],
   providers: [

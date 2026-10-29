@@ -1,7 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import type { AttachmentEntityType } from "@le-garage/database";
-import { maxBytesFor, type PresignUploadInput, type RegisterAttachmentInput } from "@le-garage/validation";
+import {
+  maxBytesFor,
+  type PresignUploadInput,
+  type RegisterAttachmentInput,
+  type UpdateAttachmentInput,
+} from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { StorageService } from "../common/storage/storage.service";
 import { AppError } from "../common/errors/app-error";
@@ -77,6 +82,8 @@ export class FilesService {
         mimeType: input.mimeType,
         sizeBytes: actualSize,
         uploadedByStaffId: actorUserId,
+        tag: input.tag,
+        caption: input.caption,
         ...this.entityForeignKey(input.entityType, input.entityId),
       },
     });
@@ -101,6 +108,25 @@ export class FilesService {
       orderBy: { createdAt: "desc" },
       take: 100,
     });
+  }
+
+  /** Re-label a photo (what it shows) — the file itself is never changed. */
+  async update(organizationId: string, attachmentId: string, actorUserId: string, input: UpdateAttachmentInput) {
+    const before = await this.getById(organizationId, attachmentId);
+    const updated = await this.prisma.client.attachment.update({
+      where: { id: attachmentId, organizationId },
+      data: input,
+    });
+    await this.audit.record({
+      organizationId,
+      entityType: "Attachment",
+      entityId: attachmentId,
+      action: "ATTACHMENT_RELABELED",
+      actorUserId,
+      beforeState: { tag: before.tag, caption: before.caption },
+      afterState: { tag: updated.tag, caption: updated.caption },
+    });
+    return updated;
   }
 
   async getSignedUrl(organizationId: string, attachmentId: string) {

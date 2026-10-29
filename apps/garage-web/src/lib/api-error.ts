@@ -39,6 +39,27 @@ export function humanizeApiError(error: unknown): string {
         return "That amount is more than what's still owed on this invoice.";
       case "INVOICE_HAS_PAYMENTS":
         return "This invoice has payments recorded — void those first.";
+      case "ORGANIZATION_SUSPENDED":
+        return "Your organization's access to Le Garage is suspended. Contact Le Garage support.";
+      case "STAFF_DEACTIVATED":
+      case "NO_ACTIVE_STAFF_MEMBERSHIP":
+        return "This account has been deactivated. Ask your administrator to restore access.";
+      case "TOO_MANY_REQUESTS":
+        return "Too many sign-in attempts. Wait a minute and try again.";
+      case "APPROVER_ROLE_REQUIRED":
+        return "Only an owner or supervisor can approve or reject repair costs.";
+      case "VEHICLE_RETIRED":
+        return "This vehicle is retired — set it back to active before requesting service.";
+      case "OWNER_ONLY":
+        return "Only an owner can add, change, or appoint an owner.";
+      case "CANNOT_CHANGE_SELF":
+        return "You can't change your own role or deactivate yourself — ask another owner.";
+      case "LAST_OWNER":
+        return "Every organization needs at least one active owner.";
+      case "ACCOUNT_IN_USE":
+        return "That email or phone already belongs to someone at another organization.";
+      case "FLEET_JOB_HAS_NO_CUSTOMER":
+        return "Repairs on your own vehicles don't take a customer.";
       default:
         if (error.status === 401) return "Your session has expired. Please sign in again.";
         if (error.status === 403) return "You don't have permission to do that.";

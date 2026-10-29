@@ -2,25 +2,32 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { UserCog } from "lucide-react";
+import { Building2, UserCog } from "lucide-react";
 import type { Job } from "@/lib/api-types";
 import { JobTimeline } from "@/components/jobs/job-timeline";
 import { StatusActionBar } from "@/components/jobs/status-action-bar";
+import { WorkOrderPanel } from "@/components/jobs/work-order-panel";
+import { garageHandles } from "@/lib/work-orders";
 import { InitialsAvatar } from "@/components/ui/avatar";
+import { JobStatusPill, VehicleStatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { formatMileage } from "@/lib/format";
-import { useAssignTechnician } from "@/hooks/use-jobs";
+import { useAssignServiceProvider, useAssignTechnician } from "@/hooks/use-jobs";
 import { useStaff } from "@/hooks/use-staff";
 import { useAuth } from "@/hooks/use-auth";
+import { useIsFleet } from "@/hooks/use-org";
+import { useServiceProviders } from "@/hooks/use-service-providers";
 import { humanizeApiError } from "@/lib/api-error";
 
 const FRONT_OFFICE_ROLES = new Set(["OWNER", "MANAGER", "FRONT_DESK"]);
 
 export function JobDetailHeader({ job }: { job: Job }) {
   const { me } = useAuth();
+  const isFleet = useIsFleet();
   const canAssign = me?.staffMember && FRONT_OFFICE_ROLES.has(me.staffMember.role);
+  const isFinished = job.status === "COLLECTED" || job.status === "CLOSED" || job.status === "CANCELLED";
 
   return (
     <div className="space-y-5">
@@ -36,17 +43,23 @@ export function JobDetailHeader({ job }: { job: Job }) {
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-graphite">
-            <span>{job.customer.fullName} · {job.customer.phone}</span>
+            {job.customer && <span>{job.customer.fullName} · {job.customer.phone}</span>}
+            {isFleet && <VehicleStatusPill status={job.vehicle.status} />}
             {job.vehicle.vin && <span className="font-mono">VIN {job.vehicle.vin}</span>}
             <span className="font-mono">{formatMileage(job.mileageAtIntake ?? job.vehicle.lastKnownMileage)}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <TechnicianAssignment job={job} canAssign={!!canAssign} />
-          <StatusActionBar job={job} />
+        <div className="flex flex-wrap items-center gap-3">
+          {isFleet && <ProviderAssignment job={job} canAssign={!!canAssign && !isFinished && !garageHandles(job)} />}
+          <TechnicianAssignment job={job} canAssign={!!canAssign} label={isFleet ? "Mechanic" : "Technician"} />
+          {/* Once a garage on Le Garage has the repair, its progress drives the
+              status — the fleet sees where it stands instead of action buttons. */}
+          {garageHandles(job) ? <JobStatusPill status={job.status} className="px-2.5 py-1 text-[13px]" /> : <StatusActionBar job={job} />}
         </div>
       </div>
+
+      <WorkOrderPanel job={job} />
 
       <div className="rounded-lg border border-line bg-surface p-4">
         <JobTimeline status={job.status} timestamps={job} />
@@ -55,7 +68,80 @@ export function JobDetailHeader({ job }: { job: Job }) {
   );
 }
 
-function TechnicianAssignment({ job, canAssign }: { job: Job; canAssign: boolean }) {
+/** Fleet repairs: which external garage is doing the work (docs/FLEET.md). */
+function ProviderAssignment({ job, canAssign }: { job: Job; canAssign: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string | undefined>(job.serviceProviderId ?? undefined);
+  const providers = useServiceProviders();
+  const assign = useAssignServiceProvider(job.id);
+
+  async function handleAssign() {
+    if (!selected) return;
+    try {
+      await assign.mutateAsync({ serviceProviderId: selected });
+      toast.success(`Assigned to ${providers.data?.find((p) => p.id === selected)?.name ?? "provider"}`);
+      setOpen(false);
+    } catch (err) {
+      toast.error("Couldn't assign the provider", { description: humanizeApiError(err) });
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => canAssign && setOpen(true)}
+        className="flex items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-left transition-colors hover:bg-paper disabled:cursor-default"
+        disabled={!canAssign}
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-line text-muted">
+          <Building2 className="h-3 w-3" />
+        </span>
+        <div className="leading-tight">
+          <p className="text-[11px] text-muted">Service provider</p>
+          <p className="text-[12.5px] font-medium text-ink">{job.serviceProvider?.name ?? "Not assigned"}</p>
+        </div>
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign service provider</DialogTitle>
+          </DialogHeader>
+          {providers.data && providers.data.length === 0 ? (
+            <p className="text-[13px] text-graphite">
+              You haven&apos;t added any service providers yet. Add the garages you work with on the Providers page.
+            </p>
+          ) : (
+            <Select value={selected} onValueChange={setSelected}>
+              <SelectTrigger>
+                <SelectValue placeholder={providers.isLoading ? "Loading…" : "Choose a provider"} />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.data?.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                    {p.phone ? ` · ${p.phone}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAssign} disabled={!selected} loading={assign.isPending}>
+              Assign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function TechnicianAssignment({ job, canAssign, label }: { job: Job; canAssign: boolean; label: string }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | undefined>(job.assignedTechnicianId ?? undefined);
   const staff = useStaff();
@@ -90,7 +176,7 @@ function TechnicianAssignment({ job, canAssign }: { job: Job; canAssign: boolean
           </span>
         )}
         <div className="leading-tight">
-          <p className="text-[11px] text-muted">Technician</p>
+          <p className="text-[11px] text-muted">{label}</p>
           <p className="text-[12.5px] font-medium text-ink">{technicianName ?? "Unassigned"}</p>
         </div>
       </button>
@@ -98,7 +184,7 @@ function TechnicianAssignment({ job, canAssign }: { job: Job; canAssign: boolean
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign technician</DialogTitle>
+            <DialogTitle>Assign {label.toLowerCase()}</DialogTitle>
           </DialogHeader>
           <Select value={selected} onValueChange={setSelected}>
             <SelectTrigger>

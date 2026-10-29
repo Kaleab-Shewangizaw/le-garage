@@ -2,17 +2,65 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Wrench, Users, Car, UserCircle, Settings } from "lucide-react";
+import { LayoutGrid, Wrench, Users, Car, UserCircle, Settings, Building2, BarChart3, ShieldCheck, ScrollText, Inbox } from "lucide-react";
+import { useWorkOrders } from "@/hooks/use-work-orders";
 import { cn } from "@/lib/utils";
+import { useOrgKind } from "@/hooks/use-org";
+import { useAuth } from "@/hooks/use-auth";
 
-const NAV_ITEMS = [
+const GARAGE_NAV_ITEMS = [
   { href: "/overview", label: "Overview", icon: LayoutGrid },
   { href: "/jobs", label: "Jobs", icon: Wrench },
+  // Repairs fleet companies send in (docs/WORK-ORDERS.md).
+  { href: "/work-orders", label: "Work orders", icon: Inbox, badge: "incoming-work-orders", roles: ["OWNER", "MANAGER", "FRONT_DESK"] },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/vehicles", label: "Vehicles", icon: Car },
   { href: "/team", label: "Team", icon: UserCircle },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+/**
+ * Fleet companies (docs/FLEET.md) don't have customers — they have their
+ * own vehicles, the garages they use, and the spend to answer for.
+ * Reports only appear for the roles the API lets read them.
+ */
+const FLEET_NAV_ITEMS = [
+  { href: "/overview", label: "Overview", icon: LayoutGrid },
+  { href: "/vehicles", label: "Vehicles", icon: Car },
+  { href: "/jobs", label: "Repairs", icon: Wrench },
+  { href: "/providers", label: "Providers", icon: Building2 },
+  { href: "/reports", label: "Reports", icon: BarChart3, roles: ["OWNER", "MANAGER"] },
+  { href: "/team", label: "Team", icon: UserCircle },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+/** Le Garage staff (docs/ADMIN.md): the cross-tenant console, nothing tenant-operational. */
+const PLATFORM_NAV_ITEMS = [
+  { href: "/admin", label: "Platform", icon: ShieldCheck, exact: true },
+  { href: "/admin/organizations", label: "Organizations", icon: Building2 },
+  { href: "/admin/audit", label: "Audit log", icon: ScrollText },
+];
+
+type NavItem = { href: string; label: string; icon: React.ElementType; roles?: string[]; exact?: boolean; badge?: string };
+
+/** Count of work orders waiting for this garage to accept — the one nav badge. */
+function useIncomingCount(enabled: boolean): number {
+  const incoming = useWorkOrders("SENT", enabled);
+  if (!enabled) return 0;
+  return (incoming.data ?? []).filter((w) => w.side === "GARAGE").length;
+}
+
+function useNavItems(): NavItem[] {
+  const kind = useOrgKind();
+  const { me } = useAuth();
+  // Render nothing until we know which product this is, rather than
+  // flashing the garage navigation at a fleet user.
+  if (!kind) return [];
+  if (kind === "PLATFORM") return PLATFORM_NAV_ITEMS;
+  const role = me?.staffMember?.role;
+  if (kind === "GARAGE") return GARAGE_NAV_ITEMS.filter((item) => !("roles" in item) || (role && (item.roles as string[]).includes(role)));
+  return FLEET_NAV_ITEMS.filter((item) => !item.roles || (role && item.roles.includes(role)));
+}
 
 /**
  * Deliberately six items (brief §9 — "do not expose 25 modules").
@@ -21,6 +69,8 @@ const NAV_ITEMS = [
  */
 export function Sidebar() {
   const pathname = usePathname();
+  const navItems = useNavItems();
+  const incoming = useIncomingCount(navItems.some((i) => i.badge));
 
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
@@ -31,8 +81,8 @@ export function Sidebar() {
         <span className="text-[14px] font-semibold text-ink">Le Garage</span>
       </div>
       <nav className="flex-1 space-y-0.5 px-3 py-4">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        {navItems.map((item) => {
+          const active = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`));
           const Icon = item.icon;
           return (
             <Link
@@ -45,6 +95,9 @@ export function Sidebar() {
             >
               <Icon className="h-[17px] w-[17px]" strokeWidth={1.75} />
               {item.label}
+              {item.badge && incoming > 0 && (
+                <span className={cn("ml-auto rounded-full px-1.5 text-[11px] font-semibold", active ? "bg-paper text-ink" : "bg-signal text-paper")}>{incoming}</span>
+              )}
             </Link>
           );
         })}
@@ -55,10 +108,11 @@ export function Sidebar() {
 
 export function MobileNav() {
   const pathname = usePathname();
+  const navItems = useNavItems();
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface md:hidden">
-      {NAV_ITEMS.slice(0, 5).map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+      {navItems.slice(0, 5).map((item) => {
+        const active = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`));
         const Icon = item.icon;
         return (
           <Link
