@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CarFront, Clock, CreditCard, PackageSearch, ThumbsUp, Wrench } from "lucide-react";
 import { useDashboardSummary } from "@/hooks/use-dashboard";
 import { useJobs } from "@/hooks/use-jobs";
@@ -8,10 +10,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JobRow } from "@/components/jobs/job-row";
 import { formatMoney } from "@/lib/format";
+import { useOrgKind } from "@/hooks/use-org";
+import { FleetOverview } from "@/components/fleet/fleet-overview";
 
 const ATTENTION_STATUSES = new Set(["WAITING_APPROVAL", "WAITING_PARTS", "ON_HOLD", "READY"]);
 
 export default function OverviewPage() {
+  const kind = useOrgKind();
+  const router = useRouter();
+  // Platform admins have no tenant of their own to overview — their home is the console.
+  useEffect(() => {
+    if (kind === "PLATFORM") router.replace("/admin");
+  }, [kind, router]);
+  if (!kind || kind === "PLATFORM") {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+  return kind === "FLEET" ? <FleetOverview /> : <GarageOverview />;
+}
+
+function GarageOverview() {
   const summary = useDashboardSummary();
   const jobs = useJobs();
 

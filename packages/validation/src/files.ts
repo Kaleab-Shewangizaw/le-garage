@@ -28,6 +28,18 @@ export function maxBytesFor(mimeType: string): number {
 
 export const attachmentEntityTypeSchema = z.enum(["JOB", "DIAGNOSIS", "ESTIMATE", "VEHICLE"]);
 
+/** What a photo/document is evidence of — drives the vehicle profile's photo history. */
+export const attachmentTagSchema = z.enum([
+  "VEHICLE_PROFILE",
+  "CONDITION",
+  "DAMAGE",
+  "BEFORE_REPAIR",
+  "AFTER_REPAIR",
+  "OLD_PART",
+  "RECEIPT",
+  "DOCUMENT",
+]);
+
 export const presignUploadSchema = z
   .object({
     entityType: attachmentEntityTypeSchema,
@@ -48,5 +60,13 @@ export const registerAttachmentSchema = z.object({
   entityId: z.string().uuid(),
   mimeType: z.enum(ALLOWED_ATTACHMENT_MIME_TYPES),
   sizeBytes: z.number().int().min(1),
+  tag: attachmentTagSchema.optional(),
+  caption: z.string().trim().max(300).optional(),
 });
 export type RegisterAttachmentInput = z.infer<typeof registerAttachmentSchema>;
+
+export const updateAttachmentSchema = z.object({
+  tag: attachmentTagSchema.nullable().optional(),
+  caption: z.string().trim().max(300).nullable().optional(),
+});
+export type UpdateAttachmentInput = z.infer<typeof updateAttachmentSchema>;

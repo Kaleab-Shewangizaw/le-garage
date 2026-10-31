@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Link2, Plus, Send, Trash2 } from "lucide-react";
+import { FileText, Hourglass, Link2, Plus, Send, Trash2 } from "lucide-react";
 import type { Estimate, Job } from "@/lib/api-types";
 import { Section } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,10 @@ import { Input, Label } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Badge } from "@/components/ui/status-pill";
 import { formatMoney, formatDateTime } from "@/lib/format";
-import { useCreateEstimateDraft, useSendEstimate, useRecordApproval, useShareEstimate } from "@/hooks/use-jobs";
+import { useCreateEstimateDraft, useSendEstimate, useRecordApproval, useShareEstimate, useTransitionJobStatus } from "@/hooks/use-jobs";
+import { useCanApproveSpend, useIsFleet } from "@/hooks/use-org";
+import { FLEET_ROLE_LABEL } from "@/lib/job-labels";
+import { garageHandles, isFleetWorkOrder } from "@/lib/work-orders";
 import { humanizeApiError } from "@/lib/api-error";
 
 interface DraftItem {
@@ -37,8 +40,22 @@ const ESTIMATE_STATUS_TONE: Record<string, "neutral" | "attention" | "good" | "d
 export function EstimateTab({ job }: { job: Job }) {
   const latest = job.estimates[0] as Estimate | undefined;
   const [building, setBuilding] = useState(false);
+  const isFleet = useIsFleet();
+  const handledByGarage = garageHandles(job);
+  const fromFleet = isFleetWorkOrder(job);
 
-  if (!latest || building) {
+  if (handledByGarage && !latest) {
+    return (
+      <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center">
+        <p className="text-[14px] font-medium text-ink">Waiting for {job.workOrder?.partnerName}&apos;s estimate</p>
+        <p className="mx-auto mt-1 max-w-md text-[12.5px] text-graphite">
+          When they send it, it appears here and you&apos;ll be notified to approve or reject each item.
+        </p>
+      </div>
+    );
+  }
+
+  if (!latest || (building && !handledByGarage)) {
     return <EstimateBuilder job={job} seed={!building ? undefined : latest} onDone={() => setBuilding(false)} />;
   }
 
@@ -49,12 +66,13 @@ export function EstimateTab({ job }: { job: Job }) {
         action={
           <div className="flex items-center gap-2">
             <Badge tone={ESTIMATE_STATUS_TONE[latest.status]}>{latest.status}</Badge>
-            {latest.status === "DRAFT" && (
+            {latest.status === "DRAFT" && !handledByGarage && (
               <Button size="sm" variant="secondary" onClick={() => setBuilding(true)}>
                 Edit
               </Button>
             )}
-            {(latest.status === "SENT" || latest.status === "APPROVED" || latest.status === "REJECTED") && (
+            {handledByGarage && <span className="text-[11.5px] text-muted">From {job.workOrder?.partnerName}</span>}
+            {!handledByGarage && (latest.status === "SENT" || latest.status === "APPROVED" || latest.status === "REJECTED") && (
               <Button size="sm" variant="secondary" onClick={() => setBuilding(true)}>
                 New version
               </Button>
@@ -68,9 +86,27 @@ export function EstimateTab({ job }: { job: Job }) {
         {latest.status === "DRAFT" && (
           <SendEstimateAction job={job} estimate={latest} />
         )}
-        {latest.status !== "DRAFT" && <ShareEstimateAction job={job} estimate={latest} />}
-        {latest.status === "SENT" && <ApprovalForm job={job} estimate={latest} />}
-        {(latest.status === "APPROVED" || latest.status === "REJECTED") && <ApprovalSummary job={job} estimate={latest} />}
+        {isFleet ? (
+          <>
+            <ApprovalSummary job={job} estimate={latest} />
+            {latest.status === "SENT" && job.status === "WAITING_APPROVAL" && <FleetApprovalPanel job={job} estimate={latest} />}
+          </>
+        ) : (
+          <>
+            {latest.status !== "DRAFT" && !fromFleet && <ShareEstimateAction job={job} estimate={latest} />}
+            {/* Always show decisions already made — a partial approval (some
+                items approved, some declined) leaves the estimate SENT, and
+                staff still need to see what the customer chose. */}
+            <ApprovalSummary job={job} estimate={latest} />
+            {latest.status === "SENT" && !fromFleet && <ApprovalForm job={job} estimate={latest} />}
+            {latest.status === "SENT" && fromFleet && job.approvals.every((a) => a.estimateId !== latest.id) && (
+              <div className="mt-4 flex items-center gap-2.5 rounded-md border border-line bg-paper px-3.5 py-3 text-[12.5px] text-graphite">
+                <Hourglass className="h-4 w-4 shrink-0 text-signal-hover" />
+                Sent to {job.workOrder?.partnerName} — they approve or reject it in their Le Garage account. You&apos;ll be notified when they decide.
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       {job.estimates.length > 1 && (
@@ -280,22 +316,33 @@ function EstimateBuilder({ job, seed, onDone }: { job: Job; seed?: Estimate; onD
 
 function SendEstimateAction({ job, estimate }: { job: Job; estimate: Estimate }) {
   const send = useSendEstimate(job.id);
+  const isFleet = useIsFleet();
+  const transition = useTransitionJobStatus(job.id);
+
+  // Fleet: submitting the estimate *is* asking for approval, so the repair
+  // moves to "awaiting approval" in the same click rather than needing a
+  // second, easy-to-forget status change.
+  async function handleSend() {
+    try {
+      await send.mutateAsync(estimate.id);
+      if (isFleet && job.status === "DIAGNOSING") {
+        await transition.mutateAsync({ toStatus: "WAITING_APPROVAL" });
+        toast.success("Submitted for approval", { description: "A supervisor can now approve or reject it." });
+      } else {
+        toast.success("Estimate sent", { description: "The customer can now review and approve it." });
+      }
+    } catch (err) {
+      toast.error(isFleet ? "Couldn't submit the estimate" : "Couldn't send the estimate", { description: humanizeApiError(err) });
+    }
+  }
+
   return (
-    <div className="mt-4 flex items-center justify-between rounded-md bg-paper px-3.5 py-3">
-      <p className="text-[12.5px] text-graphite">Sending freezes this version — further changes create a new one.</p>
-      <Button
-        size="sm"
-        onClick={async () => {
-          try {
-            await send.mutateAsync(estimate.id);
-            toast.success("Estimate sent", { description: "The customer can now review and approve it." });
-          } catch (err) {
-            toast.error("Couldn't send the estimate", { description: humanizeApiError(err) });
-          }
-        }}
-        loading={send.isPending}
-      >
-        <Send className="h-3.5 w-3.5" /> Send estimate
+    <div className="mt-4 flex items-center justify-between gap-3 rounded-md bg-paper px-3.5 py-3">
+      <p className="text-[12.5px] text-graphite">
+        {isFleet ? "Submitting locks this version for the manager's decision — changes create a new version." : "Sending freezes this version — further changes create a new one."}
+      </p>
+      <Button size="sm" onClick={handleSend} loading={send.isPending || transition.isPending}>
+        <Send className="h-3.5 w-3.5" /> {isFleet ? "Submit for approval" : "Send estimate"}
       </Button>
     </div>
   );
@@ -401,19 +448,130 @@ function ApprovalForm({ job, estimate }: { job: Job; estimate: Estimate }) {
   );
 }
 
+/**
+ * Fleet spend decision (docs/FLEET.md). Only owners/supervisors get the
+ * controls — the API enforces the same rule (ApprovalsService) — and
+ * everyone else sees who the repair is waiting on.
+ */
+function FleetApprovalPanel({ job, estimate }: { job: Job; estimate: Estimate }) {
+  const canApprove = useCanApproveSpend();
+  const [decisions, setDecisions] = useState<Record<string, "APPROVED" | "REJECTED">>(
+    Object.fromEntries(estimate.items.map((i) => [i.id, "APPROVED" as const])),
+  );
+  const [note, setNote] = useState("");
+  const recordApproval = useRecordApproval(job.id);
+
+  if (!canApprove) {
+    return (
+      <div className="mt-4 flex items-center gap-2.5 rounded-md border border-line bg-paper px-3.5 py-3 text-[12.5px] text-graphite">
+        <Hourglass className="h-4 w-4 shrink-0 text-signal-hover" />
+        Waiting for a supervisor or owner to approve or reject this estimate.
+      </div>
+    );
+  }
+
+  const approvedTotal = estimate.items.filter((i) => decisions[i.id] === "APPROVED").reduce((sum, i) => sum + i.lineTotal, 0);
+  const anyRejected = Object.values(decisions).includes("REJECTED");
+
+  async function submit(override?: "REJECTED") {
+    try {
+      await recordApproval.mutateAsync({
+        estimateId: estimate.id,
+        input: {
+          method: "STAFF_DECISION",
+          note: note || undefined,
+          itemDecisions: estimate.items.map((i) => ({ estimateItemId: i.id, decision: override ?? decisions[i.id] ?? "APPROVED" })),
+        },
+      });
+      toast.success(override ? "Estimate rejected" : "Approved — the repair can go ahead", {
+        description: override ? "The coordinator can revise the estimate or cancel the repair." : undefined,
+      });
+      setNote("");
+    } catch (err) {
+      toast.error("Couldn't record the decision", { description: humanizeApiError(err) });
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-md border border-line bg-paper p-3.5">
+      <p className="eyebrow">Your decision</p>
+      <div className="space-y-1.5">
+        {estimate.items.map((item) => (
+          <div key={item.id} className="flex items-center justify-between gap-2 rounded-sm bg-surface px-3 py-2">
+            <span className="min-w-0 truncate text-[13px] text-ink">{item.description}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="font-mono text-[12px] text-graphite">{formatMoney(item.lineTotal)}</span>
+              {(["APPROVED", "REJECTED"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={decisions[item.id] === d}
+                  onClick={() => setDecisions((prev) => ({ ...prev, [item.id]: d }))}
+                  className={`rounded-sm px-2 py-1 text-[11.5px] font-medium transition-colors ${
+                    decisions[item.id] === d
+                      ? d === "APPROVED"
+                        ? "bg-good text-paper"
+                        : "bg-danger text-paper"
+                      : "bg-black/[0.04] text-graphite hover:bg-black/[0.08]"
+                  }`}
+                >
+                  {d === "APPROVED" ? "Approve" : "Reject"}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <Input
+        placeholder={anyRejected ? "Reason — e.g. get a second quote for the gearbox" : "Note (optional) — e.g. within monthly budget"}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Button variant="secondary" className="text-danger hover:bg-danger-soft" onClick={() => submit("REJECTED")} loading={recordApproval.isPending}>
+          Reject estimate
+        </Button>
+        <Button onClick={() => submit()} loading={recordApproval.isPending} disabled={approvedTotal === 0 && anyRejected}>
+          Approve {formatMoney(approvedTotal, estimate.currency)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalSummary({ job, estimate }: { job: Job; estimate: Estimate }) {
   const relevant = job.approvals.filter((a) => a.estimateId === estimate.id);
   if (relevant.length === 0) return null;
   return (
     <div className="mt-4 space-y-2">
-      {relevant.map((a) => (
-        <div key={a.id} className="rounded-md bg-paper px-3.5 py-2.5 text-[12.5px]">
-          <p className="text-graphite">
-            {a.method === "IN_APP" ? "Approved in the owner app" : "Logged by staff"} · {formatDateTime(a.createdAt)}
-          </p>
-          {a.note && <p className="mt-0.5 text-ink">&ldquo;{a.note}&rdquo;</p>}
-        </div>
-      ))}
+      {relevant.map((a) => {
+        const approved = a.itemDecisions.filter((d) => d.decision === "APPROVED").length;
+        return (
+          <div key={a.id} className="rounded-md bg-paper px-3.5 py-2.5 text-[12.5px]">
+            <p className="text-graphite">
+              <span className={approved > 0 ? "font-medium text-good" : "font-medium text-danger"}>
+                {approved === 0 ? "Rejected" : approved === a.itemDecisions.length ? "Approved" : `Approved ${approved} of ${a.itemDecisions.length} items`}
+              </span>{" "}
+              {a.method === "STAFF_DECISION" ? (
+                <>
+                  by {a.decidedByStaff?.user.fullName ?? "a manager"}
+                  {a.decidedByStaff && ` (${FLEET_ROLE_LABEL[a.decidedByStaff.role] ?? a.decidedByStaff.role})`}
+                </>
+              ) : a.method === "FLEET_PORTAL" ? (
+                <>
+                  by {a.decidedByStaff?.user.fullName ?? "the fleet"} for {job.workOrder?.partnerName ?? "the fleet"}, in Le Garage
+                </>
+              ) : a.method === "IN_APP" ? (
+                "by the customer in the owner app"
+              ) : (
+                "— logged by staff"
+              )}{" "}
+              · {formatDateTime(a.createdAt)}
+            </p>
+            {a.note && <p className="mt-0.5 text-ink">&ldquo;{a.note}&rdquo;</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }

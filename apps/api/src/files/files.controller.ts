@@ -1,11 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
   presignUploadSchema,
   registerAttachmentSchema,
   attachmentEntityTypeSchema,
+  updateAttachmentSchema,
   type PresignUploadInput,
   type RegisterAttachmentInput,
+  type UpdateAttachmentInput,
 } from "@le-garage/validation";
 import type { AttachmentEntityType } from "@le-garage/database";
 import type { AccessTokenPayload } from "@le-garage/types";
@@ -47,6 +49,15 @@ export class FilesController {
     @Body(new ZodValidationPipe(registerAttachmentSchema)) body: RegisterAttachmentInput,
   ) {
     return this.filesService.register(user.organizationId, user.sub, body);
+  }
+
+  @Patch(":id")
+  async update(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateAttachmentSchema)) body: UpdateAttachmentInput,
+  ) {
+    return this.filesService.update(user.organizationId, id, user.sub, body);
   }
 
   @Get(":id/url")

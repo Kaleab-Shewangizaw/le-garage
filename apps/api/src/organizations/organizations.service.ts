@@ -16,8 +16,11 @@ export class OrganizationsService {
   ) {}
 
   /**
-   * Garage signup: creates the Organization + Garage + owner User +
-   * OWNER StaffMember in one transaction, then logs the owner in.
+   * Signup: creates the Organization + Garage + owner User + OWNER
+   * StaffMember in one transaction, then logs the owner in. For a FLEET
+   * organization the Garage row is the company's workspace record (every
+   * StaffMember and Job hangs off one — docs/FLEET.md), named after the
+   * company itself.
    * This is the only place a User/StaffMember is created without an
    * existing tenant context, by definition.
    */
@@ -32,11 +35,13 @@ export class OrganizationsService {
     const passwordHash = await argon2.hash(input.password);
 
     const result = await this.prisma.client.$transaction(async (tx) => {
-      const organization = await tx.organization.create({ data: { name: input.organizationName } });
+      const organization = await tx.organization.create({
+        data: { name: input.organizationName, kind: input.kind },
+      });
       const garage = await tx.garage.create({
         data: {
           organizationId: organization.id,
-          name: input.garageName,
+          name: input.garageName ?? input.organizationName,
           phone: input.garagePhone,
           address: input.garageAddress,
         },

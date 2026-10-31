@@ -8,10 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { humanizeApiError } from "@/lib/api-error";
+import { cn } from "@/lib/utils";
+
+type Kind = "FLEET" | "GARAGE";
+
+const KIND_OPTIONS: { value: Kind; title: string; description: string }[] = [
+  { value: "FLEET", title: "My company's vehicles", description: "Track repairs, approvals and costs for your own fleet" },
+  { value: "GARAGE", title: "A repair garage", description: "Run job cards for your customers' vehicles" },
+];
 
 export default function RegisterPage() {
   const { registerOrganization } = useAuth();
   const router = useRouter();
+  const [kind, setKind] = useState<Kind>("FLEET");
   const [form, setForm] = useState({
     organizationName: "",
     garageName: "",
@@ -23,8 +32,9 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const isFleet = kind === "FLEET";
   const canSubmit =
-    form.organizationName && form.garageName && form.ownerFullName && (form.ownerEmail || form.ownerPhone) && form.password.length >= 8;
+    form.organizationName && (isFleet || form.garageName) && form.ownerFullName && (form.ownerEmail || form.ownerPhone) && form.password.length >= 8;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,8 +42,9 @@ export default function RegisterPage() {
     setSubmitting(true);
     try {
       await registerOrganization({
+        kind,
         organizationName: form.organizationName,
-        garageName: form.garageName,
+        garageName: isFleet ? undefined : form.garageName,
         ownerFullName: form.ownerFullName,
         ownerEmail: form.ownerEmail || undefined,
         ownerPhone: form.ownerPhone || undefined,
@@ -54,17 +65,45 @@ export default function RegisterPage() {
   return (
     <Card>
       <CardContent className="pt-6">
-        <h1 className="text-[17px] font-semibold text-ink">Set up your garage</h1>
+        <h1 className="text-[17px] font-semibold text-ink">{isFleet ? "Set up your fleet" : "Set up your garage"}</h1>
         <p className="mt-1 text-[13px] text-graphite">A couple of details and you&apos;re in.</p>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="garageName">Garage name</Label>
-            <Input id="garageName" placeholder="e.g. Bole Auto Care" value={form.garageName} onChange={set("garageName")} autoFocus />
+            <Label>What are you managing?</Label>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup">
+              {KIND_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === option.value}
+                  onClick={() => setKind(option.value)}
+                  className={cn(
+                    "rounded-md border px-3 py-2.5 text-left transition-colors",
+                    kind === option.value ? "border-ink bg-ink/[0.03]" : "border-line hover:bg-black/[0.02]",
+                  )}
+                >
+                  <p className="text-[13px] font-medium text-ink">{option.title}</p>
+                  <p className="mt-0.5 text-[11.5px] leading-snug text-graphite">{option.description}</p>
+                </button>
+              ))}
+            </div>
           </div>
+          {!isFleet && (
+            <div className="space-y-1.5">
+              <Label htmlFor="garageName">Garage name</Label>
+              <Input id="garageName" placeholder="e.g. Bole Auto Care" value={form.garageName} onChange={set("garageName")} />
+            </div>
+          )}
           <div className="space-y-1.5">
-            <Label htmlFor="organizationName">Business name</Label>
-            <Input id="organizationName" placeholder="Often the same as your garage name" value={form.organizationName} onChange={set("organizationName")} />
+            <Label htmlFor="organizationName">{isFleet ? "Company name" : "Business name"}</Label>
+            <Input
+              id="organizationName"
+              placeholder={isFleet ? "e.g. Abay Logistics PLC" : "Often the same as your garage name"}
+              value={form.organizationName}
+              onChange={set("organizationName")}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ownerFullName">Your name</Label>
@@ -86,7 +125,7 @@ export default function RegisterPage() {
           </div>
           <FieldError>{error ?? undefined}</FieldError>
           <Button type="submit" className="w-full" loading={submitting} disabled={!canSubmit}>
-            Create garage
+            {isFleet ? "Create fleet account" : "Create garage"}
           </Button>
         </form>
       </CardContent>

@@ -75,7 +75,9 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   const data = contentType.includes("application/json") ? await res.json() : undefined;
 
   if (!res.ok) {
-    if (res.status === 401) tokenStore.clear();
+    // A suspended organization can't do anything — end the session rather
+    // than leave every screen failing; signing in again explains why.
+    if (res.status === 401 || data?.error?.code === "ORGANIZATION_SUSPENDED") tokenStore.clear();
     const err = data?.error;
     throw new ApiError(res.status, err?.code ?? "UNKNOWN_ERROR", err?.message ?? res.statusText, err?.details);
   }

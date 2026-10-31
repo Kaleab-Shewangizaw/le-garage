@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AttachmentEntityType } from "@le-garage/types";
+import type { AttachmentEntityType, AttachmentTag } from "@le-garage/types";
+import type { UpdateAttachmentInput } from "@le-garage/validation";
 import { api } from "@/lib/api-client";
 import type { Attachment } from "@/lib/api-types";
 
@@ -34,7 +35,7 @@ interface UploadInput {
 export function useUploadAttachment(entityType: AttachmentEntityType, entityId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file }: Pick<UploadInput, "file">) => {
+    mutationFn: async ({ file, tag, caption }: Pick<UploadInput, "file"> & { tag?: AttachmentTag; caption?: string }) => {
       const presign = await api.post<{ uploadUrl: string; objectKey: string }>("/files/presign", {
         entityType,
         entityId,
@@ -58,10 +59,14 @@ export function useUploadAttachment(entityType: AttachmentEntityType, entityId: 
         entityId,
         mimeType: file.type,
         sizeBytes: file.size,
+        tag,
+        caption,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["attachments", entityType, entityId] });
+      // Vehicle profiles show every repair's photos too.
+      queryClient.invalidateQueries({ queryKey: ["vehicles"], exact: false });
     },
   });
 }
@@ -72,6 +77,17 @@ export function useDeleteAttachment(entityType: AttachmentEntityType, entityId: 
     mutationFn: (attachmentId: string) => api.delete(`/files/${attachmentId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["attachments", entityType, entityId] });
+    },
+  });
+}
+
+export function useUpdateAttachment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateAttachmentInput }) => api.patch<Attachment>(`/files/${id}`, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"], exact: false });
     },
   });
 }

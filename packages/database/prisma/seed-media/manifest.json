@@ -1,0 +1,331 @@
+{
+  "_comment": "Demo images for prisma/seed.ts. Every image is an illustration stamped DEMO IMAGE — not a real photo. Receipt amounts match the seeded invoices.",
+  "images": [
+    {
+      "file": "vehicle-3A12345.jpg",
+      "kind": "vehicle",
+      "shape": "truck",
+      "color": "#f4f4f2",
+      "plate": "3-A12345",
+      "title": "Isuzu FSR · 2018"
+    },
+    {
+      "file": "vehicle-3A23456.jpg",
+      "kind": "vehicle",
+      "shape": "truck",
+      "color": "#dfe8f3",
+      "plate": "3-A23456",
+      "title": "Isuzu NPR · 2020"
+    },
+    {
+      "file": "vehicle-3B34567.jpg",
+      "kind": "vehicle",
+      "shape": "pickup",
+      "color": "#c9ccd1",
+      "plate": "3-B34567",
+      "title": "Toyota Hilux · 2019"
+    },
+    {
+      "file": "vehicle-3B45678.jpg",
+      "kind": "vehicle",
+      "shape": "van",
+      "color": "#f4f4f2",
+      "plate": "3-B45678",
+      "title": "Toyota Hiace · 2017"
+    },
+    {
+      "file": "vehicle-3C56789.jpg",
+      "kind": "vehicle",
+      "shape": "truck",
+      "color": "#c8473b",
+      "plate": "3-C56789",
+      "title": "FAW J6 · 2021"
+    },
+    {
+      "file": "vehicle-3C67890.jpg",
+      "kind": "vehicle",
+      "shape": "car",
+      "color": "#b9bdc4",
+      "plate": "3-C67890",
+      "title": "Suzuki Dzire · 2016"
+    },
+    {
+      "file": "vehicle-3D78901.jpg",
+      "kind": "vehicle",
+      "shape": "truck",
+      "color": "#eef0ee",
+      "plate": "3-D78901",
+      "title": "Isuzu FSR · 2019"
+    },
+    {
+      "file": "vehicle-3E89012.jpg",
+      "kind": "vehicle",
+      "shape": "suv",
+      "color": "#d8c9a8",
+      "plate": "3-E89012",
+      "title": "Toyota Land Cruiser 79 · 2012"
+    },
+    {
+      "file": "vehicle-AA12345.jpg",
+      "kind": "vehicle",
+      "shape": "car",
+      "color": "#f4f4f2",
+      "plate": "AA-12345",
+      "title": "Toyota Corolla · 2015"
+    },
+    {
+      "file": "doc-3A12345-insurance.jpg",
+      "kind": "document",
+      "title": "Third-party insurance certificate",
+      "lines": [
+        "Insured vehicle: 3-A12345 · Isuzu FSR",
+        "Insurer: Demo Insurance S.C.",
+        "Valid: 01 Jan 2026 – 31 Dec 2026"
+      ],
+      "plate": "3-A12345"
+    },
+    {
+      "file": "damage-3C56789-bumper.jpg",
+      "kind": "closeup",
+      "accent": "#c8473b",
+      "title": "Front bumper & left headlamp",
+      "subtitle": "Collision at Saris — chassis to be assessed by insurer",
+      "plate": "3-C56789",
+      "icon": "bumper"
+    },
+    {
+      "file": "dzire-clutch-oldpart.jpg",
+      "kind": "part",
+      "title": "Old clutch plate",
+      "subtitle": "Friction lining worn down to the rivets",
+      "plate": "3-C67890",
+      "icon": "disc"
+    },
+    {
+      "file": "dzire-clutch-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Kality Truck Service",
+      "plate": "3-C67890",
+      "lines": [
+        [
+          "Clutch kit (plate, cover, bearing)",
+          14500
+        ],
+        [
+          "Gearbox removal and clutch replacement",
+          4000
+        ]
+      ]
+    },
+    {
+      "file": "fsr-brakes-before.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Left front caliper seized",
+      "subtitle": "Pads below wear limit · vehicle pulling left",
+      "plate": "3-A12345",
+      "icon": "brake"
+    },
+    {
+      "file": "fsr-brakes-oldpart.jpg",
+      "kind": "part",
+      "title": "Removed brake pads",
+      "subtitle": "2 mm left on the inner pad",
+      "plate": "3-A12345",
+      "icon": "pads"
+    },
+    {
+      "file": "fsr-brakes-after.jpg",
+      "kind": "after",
+      "title": "New pads fitted, caliper rebuilt",
+      "subtitle": "Road-tested loaded — no pull",
+      "plate": "3-A12345",
+      "icon": "brake"
+    },
+    {
+      "file": "fsr-brakes-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Kality Truck Service",
+      "plate": "3-A12345",
+      "lines": [
+        [
+          "Brake pads, front axle set",
+          6800
+        ],
+        [
+          "Caliper rebuild kit",
+          3200
+        ],
+        [
+          "Brake service, front axle",
+          3500
+        ]
+      ]
+    },
+    {
+      "file": "fsr2-gearbox-before.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Gearbox removed for overhaul",
+      "subtitle": "Crunching between 3rd and 4th gear",
+      "plate": "3-D78901",
+      "icon": "gear"
+    },
+    {
+      "file": "fsr2-gearbox-oldpart.jpg",
+      "kind": "part",
+      "title": "Worn 3rd/4th synchro ring",
+      "subtitle": "Teeth rounded — replaced",
+      "plate": "3-D78901",
+      "icon": "gear"
+    },
+    {
+      "file": "fsr2-gearbox-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Kality Truck Service",
+      "plate": "3-D78901",
+      "lines": [
+        [
+          "Synchro ring set",
+          22000
+        ],
+        [
+          "Gearbox removal and overhaul",
+          18000
+        ]
+      ],
+      "note": "50% paid on collection"
+    },
+    {
+      "file": "dzire-service-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Kality Truck Service",
+      "plate": "3-C67890",
+      "lines": [
+        [
+          "Engine oil 5W-30 (4L) + oil filter",
+          3900
+        ],
+        [
+          "Air filter",
+          1100
+        ],
+        [
+          "Service labour",
+          1500
+        ]
+      ]
+    },
+    {
+      "file": "faw-collision-after.jpg",
+      "kind": "after",
+      "title": "Headlamp replaced, bumper refitted",
+      "subtitle": "Temporary repair until insurance assessment",
+      "plate": "3-C56789",
+      "icon": "bumper"
+    },
+    {
+      "file": "faw-collision-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Kality Truck Service",
+      "plate": "3-C56789",
+      "lines": [
+        [
+          "Headlamp assembly (left)",
+          9500
+        ],
+        [
+          "Bumper straightening and fitting",
+          2500
+        ]
+      ]
+    },
+    {
+      "file": "fsr-radiator-before.jpg",
+      "kind": "closeup",
+      "accent": "#2b7bd9",
+      "title": "Coolant leaking at radiator core",
+      "subtitle": "Found during inspection at Kality",
+      "plate": "3-A12345",
+      "icon": "radiator"
+    },
+    {
+      "file": "fsr-radiator-pump.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Water pump bearing play",
+      "subtitle": "Noisy at idle — recommended replacement",
+      "plate": "3-A12345",
+      "icon": "pump"
+    },
+    {
+      "file": "npr-alternator-dash.jpg",
+      "kind": "closeup",
+      "accent": "#c8473b",
+      "title": "Battery warning light on",
+      "subtitle": "Alternator output 11.8 V at idle",
+      "plate": "3-A23456",
+      "icon": "battery"
+    },
+    {
+      "file": "hilux-tyres-before.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Rear tyre tread at 1.5 mm",
+      "subtitle": "Vibration above 80 km/h",
+      "plate": "3-B34567",
+      "icon": "tyre"
+    },
+    {
+      "file": "hilux-tyres-after.jpg",
+      "kind": "after",
+      "title": "Two new rear tyres fitted",
+      "subtitle": "All four wheels balanced and aligned",
+      "plate": "3-B34567",
+      "icon": "tyre"
+    },
+    {
+      "file": "hilux-tyres-receipt.jpg",
+      "kind": "receipt",
+      "provider": "Lideta Tyre Center",
+      "plate": "3-B34567",
+      "lines": [
+        [
+          "Tyre 265/65R17 (rear) × 2",
+          22400
+        ],
+        [
+          "Fitting, balancing and alignment",
+          1800
+        ]
+      ]
+    },
+    {
+      "file": "hiace-brakes-driver.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Driver's photo: front brake",
+      "subtitle": "Grinding noise · pedal feels soft",
+      "plate": "3-B45678",
+      "icon": "brake"
+    },
+    {
+      "file": "corolla-cv-boot.jpg",
+      "kind": "closeup",
+      "accent": "#d9822b",
+      "title": "Torn outer CV joint boot",
+      "subtitle": "Grease leaking onto the wheel well",
+      "plate": "AA-12345",
+      "icon": "boot"
+    },
+    {
+      "file": "dzire-ac-pressure.jpg",
+      "kind": "closeup",
+      "accent": "#2b7bd9",
+      "title": "Low refrigerant pressure",
+      "subtitle": "Leak traced to the condenser inlet — Bole Auto Care",
+      "plate": "3-C67890",
+      "icon": "radiator"
+    }
+  ]
+}

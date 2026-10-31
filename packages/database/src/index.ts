@@ -33,8 +33,10 @@ export const prisma: TenantScopedPrismaClient = globalThis.__legaragePrisma ?? w
  * input to those queries is a verified identity (userId from a verified
  * JWT, or credentials checked first), never an attacker-supplied resource
  * id, so it is not the IDOR shape the guard exists to prevent
- * (docs/SECURITY.md §2, §6). Do not reach for this anywhere else — every
- * other tenant-scoped query must go through `prisma`.
+ * (docs/SECURITY.md §2, §6). The one other sanctioned use is the
+ * PLATFORM_ADMIN console (apps/api/src/admin, docs/ADMIN.md), which is
+ * cross-tenant by definition and audit-logs every write. Do not reach for
+ * this anywhere else — every other tenant-scoped query must go through `prisma`.
  */
 export const prismaUnscoped: PrismaClient = base;
 

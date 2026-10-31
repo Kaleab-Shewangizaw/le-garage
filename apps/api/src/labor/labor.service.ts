@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { CreateJobLaborInput, UpdateJobLaborInput } from "@le-garage/validation";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AppError } from "../common/errors/app-error";
+import { assertNotGarageHandled } from "../common/work-order-lock";
 import { AuditService } from "../audit/audit.service";
 import { assertJobNotInvoiced } from "../common/job-financial-lock";
 
@@ -21,6 +22,7 @@ export class LaborService {
   }
 
   async create(organizationId: string, jobId: string, actorUserId: string, input: CreateJobLaborInput) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     await this.assertJobExists(organizationId, jobId);
     await assertJobNotInvoiced(this.prisma, organizationId, jobId);
 
@@ -42,6 +44,7 @@ export class LaborService {
   }
 
   async update(organizationId: string, jobId: string, laborId: string, actorUserId: string, input: UpdateJobLaborInput) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     const before = await this.getById(organizationId, jobId, laborId);
     await assertJobNotInvoiced(this.prisma, organizationId, jobId);
 
@@ -65,6 +68,7 @@ export class LaborService {
   }
 
   async remove(organizationId: string, jobId: string, laborId: string, actorUserId: string) {
+    await assertNotGarageHandled(this.prisma, organizationId, jobId);
     const before = await this.getById(organizationId, jobId, laborId);
     await assertJobNotInvoiced(this.prisma, organizationId, jobId);
 

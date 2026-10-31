@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Role, VehicleStatus } from "@le-garage/database";
 import {
   createVehicleSchema,
   updateVehicleSchema,
@@ -15,8 +16,14 @@ export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
   @Get()
-  async search(@CurrentUser() user: AccessTokenPayload, @Query("search") search?: string) {
-    return this.vehiclesService.search(user.organizationId, search);
+  async search(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query("search") search?: string,
+    @Query("status") status?: string,
+    @Query("limit") limit?: string,
+  ) {
+    const statusFilter = status && status in VehicleStatus ? (status as VehicleStatus) : undefined;
+    return this.vehiclesService.search(user.organizationId, search, statusFilter, limit ? Number(limit) : undefined);
   }
 
   @Get(":id")
@@ -27,6 +34,11 @@ export class VehiclesController {
   @Get(":id/jobs")
   async jobHistory(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
     return this.vehiclesService.jobHistory(user.organizationId, id);
+  }
+
+  @Get(":id/visits")
+  async visits(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
+    return this.vehiclesService.visits(user.organizationId, id);
   }
 
   @Get(":id/service-history")
@@ -48,6 +60,6 @@ export class VehiclesController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateVehicleSchema)) body: UpdateVehicleInput,
   ) {
-    return this.vehiclesService.update(user.organizationId, id, user.sub, body);
+    return this.vehiclesService.update(user.organizationId, id, user.sub, user.role as Role, body);
   }
 }

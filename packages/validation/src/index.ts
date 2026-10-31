@@ -14,3 +14,7 @@ export * from "./invoices";
 export * from "./payments";
 export * from "./files";
 export * from "./owner";
+export * from "./service-providers";
+export * from "./reports";
+export * from "./admin";
+export * from "./work-orders";

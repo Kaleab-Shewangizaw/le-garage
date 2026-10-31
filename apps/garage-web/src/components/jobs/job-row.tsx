@@ -23,7 +23,9 @@ export function JobRow({ job }: { job: JobListItem }) {
           </p>
           <p className="shrink-0 font-mono text-[12px] text-graphite">{job.vehicle.licensePlate}</p>
         </div>
-        <p className="truncate text-[12.5px] text-graphite">{job.customer.fullName} · {job.complaint}</p>
+        <p className="truncate text-[12.5px] text-graphite">
+          {job.customer?.fullName ?? job.serviceProvider?.name ?? "No provider yet"} · {job.complaint}
+        </p>
       </div>
 
       <div className="hidden shrink-0 lg:block">

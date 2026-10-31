@@ -6,7 +6,7 @@ import type { AccessTokenPayload } from "@le-garage/types";
 import type { LoginInput, RegisterOrganizationInput } from "@le-garage/validation";
 import { api } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
-import type { Garage, StaffMember, StaffUser } from "@/lib/api-types";
+import type { Garage, Organization, StaffMember, StaffUser } from "@/lib/api-types";
 
 interface TokenPair {
   accessToken: string;
@@ -15,7 +15,7 @@ interface TokenPair {
 
 interface MeResponse {
   user: StaffUser;
-  staffMember: (StaffMember & { garage: Garage }) | null;
+  staffMember: (StaffMember & { garage: Garage; organization: Organization }) | null;
 }
 
 interface AuthContextValue {

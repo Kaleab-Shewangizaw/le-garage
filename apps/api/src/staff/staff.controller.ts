@@ -27,7 +27,7 @@ export class StaffController {
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(inviteStaffSchema)) body: ValidatedInviteInput,
   ) {
-    return this.staffService.invite(user.organizationId, user.garageId, user.sub, body as never);
+    return this.staffService.invite(user.organizationId, user.garageId, user.sub, user.role as Role, body as never);
   }
 
   @Patch(":staffId")
@@ -37,6 +37,12 @@ export class StaffController {
     @Param("staffId") staffId: string,
     @Body(new ZodValidationPipe(updateStaffSchema)) body: UpdateStaffInput,
   ) {
-    return this.staffService.updateRole(user.organizationId, user.garageId, staffId, user.sub, body as never);
+    return this.staffService.updateRole(
+      user.organizationId,
+      user.garageId,
+      staffId,
+      { userId: user.sub, staffMemberId: user.staffMemberId, role: user.role as Role },
+      body as never,
+    );
   }
 }

@@ -17,6 +17,7 @@ import { useGenerateInvoice, useIssueInvoice, useVoidInvoice, useRecordPayment }
 import { useIdempotencyKey } from "@/hooks/use-idempotency-key";
 import { useAuth } from "@/hooks/use-auth";
 import { humanizeApiError } from "@/lib/api-error";
+import { garageHandles } from "@/lib/work-orders";
 
 const INVOICE_STATUS_TONE: Record<string, "neutral" | "attention" | "good" | "danger"> = {
   DRAFT: "neutral",
@@ -27,6 +28,9 @@ const INVOICE_STATUS_TONE: Record<string, "neutral" | "attention" | "good" | "da
 export function InvoiceTab({ job }: { job: Job }) {
   const { me } = useAuth();
   const isFrontOffice = me?.staffMember && ["OWNER", "MANAGER", "FRONT_DESK"].includes(me.staffMember.role);
+  // A garage on Le Garage sends its own invoice for this repair (docs/WORK-ORDERS.md).
+  const handledByGarage = garageHandles(job);
+  const canBill = isFrontOffice && !handledByGarage;
   const canVoid = me?.staffMember && ["OWNER", "MANAGER"].includes(me.staffMember.role);
 
   const latest = job.invoices[0] as Invoice | undefined;
@@ -59,9 +63,13 @@ export function InvoiceTab({ job }: { job: Job }) {
           <EmptyState
             icon={FileText}
             title="No invoice yet"
-            description="Generate one from the parts and labor recorded on this job."
+            description={
+              handledByGarage
+                ? `${job.workOrder?.partnerName} will send their invoice here when the work is done.`
+                : "Generate one from the parts and labor recorded on this job."
+            }
             action={
-              isFrontOffice && (
+              canBill && (
                 <Button onClick={handleGenerate} loading={generate.isPending}>
                   Generate invoice
                 </Button>
@@ -80,7 +88,7 @@ export function InvoiceTab({ job }: { job: Job }) {
         action={
           <div className="flex items-center gap-2">
             <Badge tone={INVOICE_STATUS_TONE[latest.status]}>{latest.status}</Badge>
-            {latest.status === "DRAFT" && isFrontOffice && (
+            {latest.status === "DRAFT" && canBill && (
               <>
                 <Button size="sm" variant="secondary" onClick={handleGenerate} loading={generate.isPending}>
                   Regenerate
@@ -101,7 +109,8 @@ export function InvoiceTab({ job }: { job: Job }) {
                 </Button>
               </>
             )}
-            {latest.status === "ISSUED" && canVoid && (
+            {handledByGarage && <span className="text-[11.5px] text-muted">From {job.workOrder?.partnerName}</span>}
+            {latest.status === "ISSUED" && canVoid && !handledByGarage && (
               <Button size="sm" variant="secondary" className="text-danger" onClick={() => setVoidOpen(true)}>
                 Void
               </Button>

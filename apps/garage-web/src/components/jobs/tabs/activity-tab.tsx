@@ -2,13 +2,14 @@
 
 import { History } from "lucide-react";
 import { useJobEvents } from "@/hooks/use-jobs";
-import { JOB_STAGE_LABEL } from "@/lib/job-labels";
+import { useJobLabels } from "@/hooks/use-org";
 import { formatDateTime } from "@/lib/format";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export function ActivityTab({ jobId }: { jobId: string }) {
   const events = useJobEvents(jobId);
+  const labels = useJobLabels();
 
   if (events.isLoading) return <SkeletonRows count={4} />;
   if (!events.data || events.data.length === 0) {
@@ -24,12 +25,12 @@ export function ActivityTab({ jobId }: { jobId: string }) {
           <p className="text-[13px] text-ink">
             {event.fromStatus ? (
               <>
-                Moved from <span className="font-medium">{JOB_STAGE_LABEL[event.fromStatus]}</span> to{" "}
-                <span className="font-medium">{JOB_STAGE_LABEL[event.toStatus]}</span>
+                Moved from <span className="font-medium">{labels.stage[event.fromStatus]}</span> to{" "}
+                <span className="font-medium">{labels.stage[event.toStatus]}</span>
               </>
             ) : (
               <>
-                Job created as <span className="font-medium">{JOB_STAGE_LABEL[event.toStatus]}</span>
+                {labels.noun === "repair" ? "Service requested as" : "Job created as"} <span className="font-medium">{labels.stage[event.toStatus]}</span>
               </>
             )}
           </p>

@@ -17,6 +17,11 @@ export {
   PaymentMethod,
   AttachmentEntityType,
   Currency,
+  OrganizationKind,
+  VehicleStatus,
+  VehicleType,
+  FuelType,
+  AttachmentTag,
 } from "@le-garage/database";
 
 /** Decoded JWT access token payload for a garage-staff session (garage-web). */

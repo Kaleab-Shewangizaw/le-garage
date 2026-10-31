@@ -4,7 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import type { Job } from "@/lib/api-types";
-import { JOB_NEXT_ACTIONS, JOB_STAGE_LABEL, type JobNextAction } from "@/lib/job-labels";
+import type { JobNextAction } from "@/lib/job-labels";
+import { useJobLabels } from "@/hooks/use-org";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea, Label } from "@/components/ui/input";
@@ -25,8 +26,29 @@ const SUCCESS_COPY: Partial<Record<string, string>> = {
   CANCELLED: "Job cancelled.",
 };
 
+const FLEET_SUCCESS_COPY: Partial<Record<string, string>> = {
+  DIAGNOSING: "Inspection started.",
+  WAITING_APPROVAL: "Submitted — waiting on a supervisor's approval.",
+  IN_PROGRESS: "Repair started.",
+  WAITING_PARTS: "Marked as waiting on parts.",
+  QUALITY_CHECK: "Sent to quality check.",
+  READY: "Repair marked complete.",
+  COLLECTED: "Vehicle is back in service. This visit has been added to its profile.",
+  ON_HOLD: "Repair put on hold.",
+  CANCELLED: "Repair cancelled.",
+};
+
 export function StatusActionBar({ job }: { job: Job }) {
-  const actions = JOB_NEXT_ACTIONS[job.status];
+  const labels = useJobLabels();
+  // Fleet: "Submit for approval" lives on the Estimate tab, where it sends
+  // the estimate and advances the repair in one click. Offering the same
+  // label here before an estimate is sent was a second, always-failing
+  // button (the API requires a sent estimate) — only show it as a recovery
+  // path once one has actually been sent.
+  const actions = labels.nextActions[job.status].filter(
+    (a) => !(labels.noun === "repair" && a.to === "WAITING_APPROVAL" && job.status === "DIAGNOSING" && job.estimates[0]?.status !== "SENT"),
+  );
+  const successCopy = labels.noun === "repair" ? FLEET_SUCCESS_COPY : SUCCESS_COPY;
   const idempotency = useIdempotencyKey();
   const transition = useTransitionJobStatus(job.id, idempotency.key);
   const [confirmAction, setConfirmAction] = useState<JobNextAction | null>(null);
@@ -36,7 +58,7 @@ export function StatusActionBar({ job }: { job: Job }) {
     return (
       <div className="flex items-center gap-2 rounded-md bg-good-soft px-3 py-2 text-[13px] text-good">
         <CheckCircle2 className="h-4 w-4" />
-        {JOB_STAGE_LABEL[job.status]}
+        {labels.stage[job.status]}
       </div>
     );
   }
@@ -44,11 +66,11 @@ export function StatusActionBar({ job }: { job: Job }) {
   async function run(action: JobNextAction, withNote?: string) {
     try {
       await transition.mutateAsync({ toStatus: action.to, note: withNote || undefined });
-      toast.success(SUCCESS_COPY[action.to] ?? "Job updated.");
+      toast.success(successCopy[action.to] ?? "Updated.");
       setConfirmAction(null);
       setNote("");
     } catch (err) {
-      toast.error("Couldn't update the job", { description: humanizeApiError(err) });
+      toast.error(`Couldn't update the ${labels.noun}`, { description: humanizeApiError(err) });
     } finally {
       // A fresh key per logical attempt: a same-tick double-click/retry
       // shares this key (deduped server-side), but the *next* deliberate
@@ -78,7 +100,7 @@ export function StatusActionBar({ job }: { job: Job }) {
           <DialogHeader>
             <DialogTitle>{confirmAction?.label}</DialogTitle>
             <DialogDescription>
-              This moves the job to &ldquo;{confirmAction && JOB_STAGE_LABEL[confirmAction.to]}&rdquo;. You can add a note explaining why.
+              This moves the {labels.noun} to &ldquo;{confirmAction && labels.stage[confirmAction.to]}&rdquo;. You can add a note explaining why.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">

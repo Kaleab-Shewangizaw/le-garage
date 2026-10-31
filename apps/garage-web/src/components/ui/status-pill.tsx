@@ -1,6 +1,9 @@
+"use client";
+
 import { cn } from "@/lib/utils";
-import type { JobStatus } from "@le-garage/types";
-import { JOB_STAGE_LABEL, stageTone } from "@/lib/job-labels";
+import type { JobStatus, VehicleStatus } from "@le-garage/types";
+import { stageTone, VEHICLE_STATUS_LABEL, vehicleStatusTone } from "@/lib/job-labels";
+import { useJobLabels } from "@/hooks/use-org";
 
 const TONE_CLASSES: Record<ReturnType<typeof stageTone>, string> = {
   neutral: "bg-black/[0.05] text-ink",
@@ -16,6 +19,7 @@ const TONE_CLASSES: Record<ReturnType<typeof stageTone>, string> = {
  * collected) get color.
  */
 export function JobStatusPill({ status, className }: { status: JobStatus; className?: string }) {
+  const labels = useJobLabels();
   const tone = stageTone(status);
   return (
     <span
@@ -25,9 +29,14 @@ export function JobStatusPill({ status, className }: { status: JobStatus; classN
         className,
       )}
     >
-      {JOB_STAGE_LABEL[status]}
+      {labels.stage[status]}
     </span>
   );
+}
+
+/** Fleet vehicle availability (docs/FLEET.md). */
+export function VehicleStatusPill({ status, className }: { status: VehicleStatus; className?: string }) {
+  return <Badge tone={vehicleStatusTone(status)} className={className}>{VEHICLE_STATUS_LABEL[status]}</Badge>;
 }
 
 export function Badge({

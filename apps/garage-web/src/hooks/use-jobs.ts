@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  AssignServiceProviderInput,
   AssignTechnicianInput,
   CreateApprovalInput,
   CreateDiagnosisInput,
@@ -60,6 +61,9 @@ function useInvalidateJob(jobId: string) {
     queryClient.invalidateQueries({ queryKey: ["jobs", jobId] });
     queryClient.invalidateQueries({ queryKey: ["jobs"], exact: false });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    // Fleet: a repair moving changes vehicle availability and report figures.
+    queryClient.invalidateQueries({ queryKey: ["vehicles"], exact: false });
+    queryClient.invalidateQueries({ queryKey: ["reports"], exact: false });
   };
 }
 
@@ -72,6 +76,7 @@ export function useCreateJob(idempotencyKey?: string) {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["customers"], exact: false });
       queryClient.invalidateQueries({ queryKey: ["vehicles"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["reports"], exact: false });
     },
   });
 }
@@ -88,6 +93,14 @@ export function useAssignTechnician(jobId: string) {
   const invalidate = useInvalidateJob(jobId);
   return useMutation({
     mutationFn: (input: AssignTechnicianInput) => api.patch<Job>(`/jobs/${jobId}/assign`, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useAssignServiceProvider(jobId: string) {
+  const invalidate = useInvalidateJob(jobId);
+  return useMutation({
+    mutationFn: (input: AssignServiceProviderInput) => api.patch<Job>(`/jobs/${jobId}/service-provider`, input),
     onSuccess: invalidate,
   });
 }

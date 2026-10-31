@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateVehicleInput, UpdateVehicleInput } from "@le-garage/validation";
+import type { VehicleStatus } from "@le-garage/types";
 import { api } from "@/lib/api-client";
-import type { JobListItem, ServiceRecord, Vehicle } from "@/lib/api-types";
+import type { JobListItem, ServiceRecord, Vehicle, VehicleVisit } from "@/lib/api-types";
 
-export function useVehicles(search?: string) {
+export function useVehicles(search?: string, options: { status?: VehicleStatus; limit?: number } = {}) {
   return useQuery({
-    queryKey: ["vehicles", search],
-    queryFn: () => api.get<Vehicle[]>("/vehicles", { search }),
+    queryKey: ["vehicles", search, options],
+    queryFn: () => api.get<Vehicle[]>("/vehicles", { search, status: options.status, limit: options.limit }),
   });
 }
 
@@ -22,6 +23,14 @@ export function useVehicleJobHistory(id: string | undefined) {
   return useQuery({
     queryKey: ["vehicles", id, "jobs"],
     queryFn: () => api.get<JobListItem[]>(`/vehicles/${id}/jobs`),
+    enabled: !!id,
+  });
+}
+
+export function useVehicleVisits(id: string | undefined) {
+  return useQuery({
+    queryKey: ["vehicles", id, "visits"],
+    queryFn: () => api.get<VehicleVisit[]>(`/vehicles/${id}/visits`),
     enabled: !!id,
   });
 }

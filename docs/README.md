@@ -24,6 +24,10 @@ update the relevant doc in the same change, not after.
 15. [PILOT.md](./PILOT.md) — how Le Garage gets tested with real garages
 16. [PILOT-FEEDBACK.md](./PILOT-FEEDBACK.md) — the running log from pilot sessions
 17. [OWNER-APP.md](./OWNER-APP.md) — the vehicle-owner mobile app: design, auth, linking, approval flow
+18. [FLEET.md](./FLEET.md) — fleet maintenance: companies maintaining their own vehicles with outside garages
+19. [ADMIN.md](./ADMIN.md) — the platform admin console: cross-tenant oversight and access control
+20. [WORK-ORDERS.md](./WORK-ORDERS.md) — fleets sending repairs to garages on Le Garage; who approves, how it syncs
+21. [WALKTHROUGH.md](./WALKTHROUGH.md) — every persona's scenario, step by step, on the demo data
 
 ## How to use this documentation
 

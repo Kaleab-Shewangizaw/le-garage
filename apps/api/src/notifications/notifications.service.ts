@@ -33,7 +33,8 @@ export class NotificationsService {
       where: { id: ctx.jobId, organizationId: ctx.organizationId },
       select: { customerId: true, vehicle: { select: { make: true, model: true } } },
     });
-    if (!job) return;
+    // Fleet repairs have no Customer (docs/FLEET.md) — nobody in the owner app to notify.
+    if (!job?.customerId) return;
 
     const links = await this.prisma.unscopedClient.customerLink.findMany({
       where: { customerId: job.customerId },
